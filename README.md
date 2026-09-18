@@ -64,7 +64,7 @@ Available for the Company category. Enter a company website URL to enrich with C
 
 ### Search with Elasticsearch DSL
 
-Use an Elasticsearch DSL query to search across any category. Enable **Preview mode** for quick testing (returns up to 20 results with essential fields only).
+Use an Elasticsearch DSL query to search across any category. Regular search returns matching IDs and can page through all of them across runs. Enable **Preview mode** for quick testing (20 records per page with essential fields only).
 
 Build your queries using the Coresignal Playground:
 - [Employee Playground](https://dashboard.coresignal.com/apis/employees/playground)

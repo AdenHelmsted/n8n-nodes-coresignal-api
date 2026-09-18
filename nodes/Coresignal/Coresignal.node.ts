@@ -10,6 +10,89 @@ import {
 	JsonObject,
 } from 'n8n-workflow';
 
+const MAX_ITEMS_PER_PAGE = 1000;
+const PREVIEW_PAGE_SIZE = 20;
+const PREVIEW_MAX_PAGE = 50;
+
+type SearchResponse = { body: IDataObject[] | number[]; headers: IDataObject };
+type SearchResult = IDataObject | number;
+
+async function runSearch(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	endpoint: string,
+): Promise<SearchResult[]> {
+	const preview = context.getNodeParameter('preview', itemIndex, false) as boolean;
+	const options = context.getNodeParameter('options', itemIndex, {}) as IDataObject;
+	const esQuery = context.getNodeParameter('esQuery', itemIndex) as IDataObject;
+
+	const request = async (qs: IDataObject): Promise<SearchResponse> =>
+		(await context.helpers.httpRequestWithAuthentication.call(context, 'coresignalApi', {
+			method: 'POST',
+			url: `${endpoint}/search/es_dsl${preview ? '/preview' : ''}`,
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+			},
+			qs,
+			body: esQuery,
+			returnFullResponse: true,
+		})) as SearchResponse;
+
+	const results: SearchResult[] = [];
+	const pagination: IDataObject = {};
+
+	if (preview) {
+		const page = (options.page as number) || 1;
+		const qs: IDataObject = { page };
+		if (options.snapshotId) {
+			qs.snapshot_token = options.snapshotId;
+		} else if (options.snapshot === true) {
+			qs.snapshot = true;
+		}
+
+		const response = await request(qs);
+		results.push(...(response.body as IDataObject[]));
+
+		const totalResults = Number(response.headers['x-total-results']);
+		const isLastPage = page * PREVIEW_PAGE_SIZE >= totalResults || page >= PREVIEW_MAX_PAGE;
+		pagination.totalResults = totalResults;
+		pagination.nextPage = isLastPage ? null : page + 1;
+		pagination.snapshotId = (response.headers['x-snapshot-token'] as string) || null;
+	} else {
+		const returnAll = context.getNodeParameter('returnAll', itemIndex, false) as boolean;
+		const limit = returnAll
+			? Infinity
+			: (context.getNodeParameter('maxResults', itemIndex) as number);
+		let after = (options.after as string) || '';
+
+		while (results.length < limit) {
+			const qs: IDataObject = {
+				items_per_page: Math.min(limit - results.length, MAX_ITEMS_PER_PAGE),
+			};
+			if (after) {
+				qs.after = after;
+			}
+
+			const response = await request(qs);
+			const ids = response.body as number[];
+			results.push(...ids);
+			after = response.headers['x-next-page-after'] as string;
+
+			// The API sends the literal string "None" on the last page
+			const isLastPage = !after || after === 'None' || ids.length === 0;
+			pagination.totalResults = Number(response.headers['x-total-results']);
+			pagination.nextPageAfter = isLastPage ? null : after;
+			if (isLastPage) break;
+		}
+	}
+
+	if (options.includePaginationInfo === true) {
+		return [{ results, pagination }];
+	}
+	return results;
+}
+
 export class Coresignal implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Coresignal',
@@ -455,8 +538,126 @@ export class Coresignal implements INodeType {
 						operation: ['search_es_dsl'],
 					},
 				},
-				description: 'Whether to use preview endpoint (returns up to 20 results with essential data)',
-				hint: 'Preview mode returns up to 20 results with essential fields only. Use it for quick testing.',
+				description:
+					'Whether to use the preview endpoint (20 results per page with essential fields, up to 50 pages)',
+				hint: 'Preview mode returns essential fields only. Use it for quick testing.',
+			},
+
+			// Return All
+			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				default: false,
+				displayOptions: {
+					show: {
+						operation: ['search_es_dsl'],
+					},
+					hide: {
+						preview: [true],
+					},
+				},
+				description: 'Whether to return all results or only up to a given limit',
+				hint: 'Regular search can return millions of IDs.',
+			},
+
+			// Limit - regular search
+			{
+				displayName: 'Limit',
+				name: 'maxResults',
+				type: 'number',
+				typeOptions: {
+					minValue: 1,
+				},
+				default: 1000,
+				displayOptions: {
+					show: {
+						operation: ['search_es_dsl'],
+						returnAll: [false],
+					},
+					hide: {
+						preview: [true],
+					},
+				},
+				description: 'Max number of results to return',
+			},
+
+			// Pagination options
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add option',
+				default: {},
+				displayOptions: {
+					show: {
+						operation: ['search_es_dsl'],
+					},
+				},
+				options: [
+					{
+						displayName: 'After',
+						name: 'after',
+						type: 'string',
+						default: '',
+						displayOptions: {
+							hide: {
+								'/preview': [true],
+							},
+						},
+						description:
+							'Cursor to continue from, taken from the nextPageAfter value of a previous run with Include Pagination Info enabled',
+					},
+					{
+						displayName: 'Include Pagination Info',
+						name: 'includePaginationInfo',
+						type: 'boolean',
+						default: false,
+						description:
+							'Whether to return a single item holding all results together with pagination details (total results, next page, snapshot ID)',
+					},
+					{
+						displayName: 'Page',
+						name: 'page',
+						type: 'number',
+						typeOptions: {
+							minValue: 1,
+							maxValue: 50,
+						},
+						default: 1,
+						displayOptions: {
+							show: {
+								'/preview': [true],
+							},
+						},
+						description: 'Preview page to fetch',
+					},
+					{
+						displayName: 'Snapshot',
+						name: 'snapshot',
+						type: 'boolean',
+						default: false,
+						displayOptions: {
+							show: {
+								'/preview': [true],
+							},
+						},
+						description:
+							'Whether to open a snapshot so later pages stay consistent. The API only accepts it on page 1 and the snapshot expires after 300 seconds. Enable Include Pagination Info to receive the snapshot ID.',
+					},
+					{
+						displayName: 'Snapshot ID',
+						name: 'snapshotId',
+						type: 'string',
+						default: '',
+						displayOptions: {
+							show: {
+								'/preview': [true],
+							},
+						},
+						description: 'Snapshot ID from a previous run that keeps preview pages consistent',
+					},
+				],
 			},
 
 		],
@@ -472,10 +673,10 @@ export class Coresignal implements INodeType {
 				const resource = this.getNodeParameter('resource', i) as string;
 				const dataset = 'multi_source'; // Always use multi_source
 				const operation = this.getNodeParameter('operation', i) as string;
+				const credentials = await this.getCredentials('coresignalApi');
+				const baseUrl = credentials.baseUrl as string;
 
 				let url = '';
-				let httpMethod: 'GET' | 'POST' = 'GET';
-				let body: IDataObject | undefined;
 				const qs: IDataObject = {};
 
 				// Build the data source string (e.g., "company_multi_source", "employee_multi_source")
@@ -496,7 +697,6 @@ export class Coresignal implements INodeType {
 							id = this.getNodeParameter('postId', i) as string;
 						}
 						url = `${baseEndpoint}/collect/${id}`;
-						httpMethod = 'GET';
 
 						const fields = this.getNodeParameter('fields', i, '') as string;
 						if (fields) {
@@ -508,7 +708,6 @@ export class Coresignal implements INodeType {
 					case 'get_by_slug': {
 						const slug = this.getNodeParameter('slug', i) as string;
 						url = `${baseEndpoint}/collect/${encodeURIComponent(slug)}`;
-						httpMethod = 'GET';
 
 						const fields = this.getNodeParameter('fields', i, '') as string;
 						if (fields) {
@@ -520,7 +719,6 @@ export class Coresignal implements INodeType {
 					case 'enrich': {
 						const websiteUrl = this.getNodeParameter('websiteUrl', i) as string;
 						url = `${baseEndpoint}/enrich`;
-						httpMethod = 'GET';
 						qs.website = websiteUrl;
 
 						const fields = this.getNodeParameter('fields', i, '') as string;
@@ -531,22 +729,21 @@ export class Coresignal implements INodeType {
 					}
 
 					case 'search_es_dsl': {
-						const preview = this.getNodeParameter('preview', i, false) as boolean;
-						url = preview
-							? `${baseEndpoint}/search/es_dsl/preview`
-							: `${baseEndpoint}/search/es_dsl`;
-						httpMethod = 'POST';
-						body = this.getNodeParameter('esQuery', i) as IDataObject;
-						break;
+						const searchResults = await runSearch(this, i, `${baseUrl}${baseEndpoint}`);
+						returnData.push(
+							...this.helpers.constructExecutionMetaData(
+								this.helpers.returnJsonArray(searchResults as IDataObject[]),
+								{
+									itemData: { item: i },
+								},
+							),
+						);
+						continue;
 					}
 				}
 
-				// Get credentials to access baseUrl
-				const credentials = await this.getCredentials('coresignalApi');
-				const baseUrl = credentials.baseUrl as string;
-
 				const requestOptions: IHttpRequestOptions = {
-					method: httpMethod,
+					method: 'GET',
 					url: `${baseUrl}${url}`,
 					headers: {
 						'Accept': 'application/json',
@@ -557,10 +754,6 @@ export class Coresignal implements INodeType {
 
 				if (Object.keys(qs).length > 0) {
 					requestOptions.qs = qs;
-				}
-
-				if (body) {
-					requestOptions.body = body as IDataObject;
 				}
 
 				const responseData = await this.helpers.httpRequestWithAuthentication.call(
