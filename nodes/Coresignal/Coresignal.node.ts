@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
 	IExecuteFunctions,
 	INodeExecutionData,
@@ -93,6 +94,56 @@ async function runSearch(
 	return results;
 }
 
+type AgenticSearchResponse = { body: IDataObject; headers: IDataObject };
+
+async function runAgenticSearch(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	baseUrl: string,
+): Promise<IDataObject> {
+	const operation = context.getNodeParameter('operation', itemIndex) as string;
+	const options = context.getNodeParameter('options', itemIndex, {}) as IDataObject;
+
+	const body: IDataObject = {
+		prompt: context.getNodeParameter('prompt', itemIndex) as string,
+		return_data: context.getNodeParameter('returnData', itemIndex, true) as boolean,
+	};
+	if (options.threshold !== undefined) {
+		body.threshold = options.threshold;
+	}
+	if (operation === 'fast') {
+		body.entity = context.getNodeParameter('entity', itemIndex) as string;
+	} else {
+		body.session_id = (options.sessionId as string)?.trim() || randomUUID();
+		body.allow_clarification = options.allowClarification === true;
+	}
+
+	const response = (await context.helpers.httpRequestWithAuthentication.call(
+		context,
+		'coresignalApi',
+		{
+			method: 'POST',
+			url: `${baseUrl}/cdapi/v2/agentic_search/${operation}`,
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+			},
+			body,
+			returnFullResponse: true,
+		},
+	)) as AgenticSearchResponse;
+
+	const result: IDataObject = { ...response.body };
+	if (operation === 'reasoning' && result.session_id === undefined) {
+		result.session_id = body.session_id;
+	}
+	result.total_results =
+		response.headers['x-total-results'] !== undefined
+			? Number(response.headers['x-total-results'])
+			: null;
+	return result;
+}
+
 export class Coresignal implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Coresignal',
@@ -123,6 +174,11 @@ export class Coresignal implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
+						name: 'Agentic Search',
+						value: 'agentic_search',
+						description: 'Turn natural language prompts into search queries and results',
+					},
+					{
 						name: 'Company',
 						value: 'company',
 						description: 'Access company data and profiles',
@@ -147,6 +203,36 @@ export class Coresignal implements INodeType {
 			},
 
 			// ============ OPERATION SELECTIONS ============
+
+			// Operation - Agentic Search
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['agentic_search'],
+					},
+				},
+				options: [
+					{
+						name: 'Fast Search',
+						value: 'fast',
+						description:
+							'Generate an Elasticsearch DSL query for a chosen entity, with rapid responses at minimal cost',
+						action: 'Run fast agentic search',
+					},
+					{
+						name: 'Reasoning Search',
+						value: 'reasoning',
+						description:
+							'Generate an Elasticsearch DSL query, with highly accurate results even for complex prompts',
+						action: 'Run reasoning agentic search',
+					},
+				],
+				default: 'fast',
+			},
 
 			// Operation - Company
 			{
@@ -660,6 +746,124 @@ export class Coresignal implements INodeType {
 				],
 			},
 
+			// ============ AGENTIC SEARCH ============
+
+			// Prompt
+			{
+				displayName: 'Prompt',
+				name: 'prompt',
+				type: 'string',
+				required: true,
+				typeOptions: {
+					rows: 3,
+				},
+				displayOptions: {
+					show: {
+						resource: ['agentic_search'],
+					},
+				},
+				default: '',
+				placeholder: 'e.g. senior Python developers in Berlin with startup experience',
+				description: 'Natural language description of the records to find',
+			},
+
+			// Entity - fast only, reasoning infers it from the prompt
+			{
+				displayName: 'Entity',
+				name: 'entity',
+				type: 'options',
+				displayOptions: {
+					show: {
+						resource: ['agentic_search'],
+						operation: ['fast'],
+					},
+				},
+				options: [
+					{
+						name: 'Company',
+						value: 'company',
+					},
+					{
+						name: 'Employee',
+						value: 'employee',
+					},
+					{
+						name: 'Job',
+						value: 'job',
+					},
+				],
+				default: 'employee',
+				description: 'Type of records the prompt targets',
+			},
+
+			// Return Data
+			{
+				displayName: 'Return Data',
+				name: 'returnData',
+				type: 'boolean',
+				default: true,
+				displayOptions: {
+					show: {
+						resource: ['agentic_search'],
+					},
+				},
+				description: 'Whether to also return up to 20 matching records',
+			},
+
+			// Agentic search options
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add option',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['agentic_search'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Allow Clarification',
+						name: 'allowClarification',
+						type: 'boolean',
+						default: false,
+						displayOptions: {
+							show: {
+								'/operation': ['reasoning'],
+							},
+						},
+						description:
+							'Whether the engine may ask a clarifying question instead of returning a query',
+					},
+					{
+						displayName: 'Session ID',
+						name: 'sessionId',
+						type: 'string',
+						default: '',
+						displayOptions: {
+							show: {
+								'/operation': ['reasoning'],
+							},
+						},
+						description:
+							'UUID that groups follow-up prompts into one conversation. Generated when empty.',
+					},
+					{
+						displayName: 'Synonym Threshold',
+						name: 'threshold',
+						type: 'number',
+						typeOptions: {
+							minValue: 0,
+							maxValue: 1,
+							numberPrecision: 3,
+						},
+						default: 0.97,
+						description:
+							'How close a synonym match must be, from 0 to 1. Higher demands a closer match.',
+					},
+				],
+			},
 		],
 		usableAsTool: true,
 	};
@@ -675,6 +879,17 @@ export class Coresignal implements INodeType {
 				const operation = this.getNodeParameter('operation', i) as string;
 				const credentials = await this.getCredentials('coresignalApi');
 				const baseUrl = credentials.baseUrl as string;
+
+				if (resource === 'agentic_search') {
+					const agenticResult = await runAgenticSearch(this, i, baseUrl);
+					returnData.push(
+						...this.helpers.constructExecutionMetaData(
+							this.helpers.returnJsonArray(agenticResult),
+							{ itemData: { item: i } },
+						),
+					);
+					continue;
+				}
 
 				let url = '';
 				const qs: IDataObject = {};

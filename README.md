@@ -1,6 +1,6 @@
 # n8n-nodes-coresignal-api
 
-This is an [n8n](https://n8n.io/) community node for the [Coresignal API](https://coresignal.com/). It provides access to company, employee, job posting, and employee post data from Coresignal's multi-source datasets.
+This is an [n8n](https://n8n.io/) community node for the [Coresignal API](https://coresignal.com/). It provides access to company, employee, job posting, and employee post data from Coresignal's multi-source datasets, and Agentic Search that turns natural language prompts into search queries.
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
@@ -15,6 +15,11 @@ This is an [n8n](https://n8n.io/) community node for the [Coresignal API](https:
 Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
 ## Operations
+
+### Agentic Search
+
+- **Fast Search** - Turn a prompt into an Elasticsearch DSL query for a chosen entity, with rapid responses at minimal cost
+- **Reasoning Search** - Turn a prompt into an Elasticsearch DSL query, with highly accurate results even for complex prompts
 
 ### Company Data
 
@@ -70,6 +75,12 @@ Build your queries using the Coresignal Playground:
 - [Employee Playground](https://dashboard.coresignal.com/apis/employees/playground)
 - [Company Playground](https://dashboard.coresignal.com/apis/company/playground)
 - [Jobs Playground](https://dashboard.coresignal.com/apis/jobs/playground)
+
+### Agentic Search
+
+Turn a natural language **Prompt** into an Elasticsearch DSL query with **Fast Search** or **Reasoning Search**. The output is one item with the generated query, the entity it targets and, with **Return Data** on, a preview of up to 20 matching records.
+
+To fetch all matching IDs, use the query in **Search with Elasticsearch DSL** on the matching category.
 
 ## Resources
 
