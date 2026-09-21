@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-coresignal-api",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "n8n community node for Coresignal API - access company, employee, job, and post data",
   "keywords": [
     "n8n-community-node-package",
