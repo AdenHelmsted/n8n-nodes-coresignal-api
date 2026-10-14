@@ -1,0 +1,19 @@
+{
+  "id": 123456789,
+  "full_name": "Synthetic Person",
+  "professional_network_url": "https://www.linkedin.com/in/synthetic-person",
+  "headline": "Advisor and Board Member",
+  "location_full": "Chicago, Illinois, United States",
+  "picture_url": "https://example.com/synthetic-avatar.jpg",
+  "experience": [
+    { "company_name": "Example Advisors", "position_title": "Advisor", "active_experience": 1, "date_from": "2020-01", "date_to": null },
+    { "company_name": "Example Foundation", "position_title": "Board Member", "active_experience": 1, "date_from": "2024", "date_to": null }
+  ],
+  "education": [
+    { "institution_name": "Example University", "degree": "BA", "date_from_year": 2001, "date_to_year": 2005 }
+  ],
+  "updated_at": "2026-09-20T11:45:00Z",
+  "checked_at": "2026-09-29T04:05:00Z",
+  "processed_at": "2026-10-01T00:00:00Z",
+  "is_deleted": 0
+}

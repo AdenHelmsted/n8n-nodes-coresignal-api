@@ -1,0 +1,14 @@
+{
+  "name": "helmsted-people-enrichment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "enrich": "node --env-file-if-exists=.env harness.mjs enrich",
+    "import": "node --env-file-if-exists=.env harness.mjs import",
+    "demo": "node harness.mjs demo",
+    "test": "node --test"
+  },
+  "dependencies": { "@supabase/supabase-js": "^2.0.0" }
+}
