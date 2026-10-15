@@ -2,7 +2,7 @@
 
 A small Node.js CLI for comparing approved LinkedIn profiles across **Coresignal, People Data Labs (PDL), and Bright Data**, then keeping the evidence and a combined person record in Supabase. Bright Data replaces Apollo in the implementation. This repository stays separate from the legislation project.
 
-The runtime uses native Node.js 22 and one direct package dependency, the official `@supabase/supabase-js` client. The original Coresignal harness remains available. Implementation stays below the 750-line runtime budget; tests, SQL, and documentation are excluded.
+The runtime uses native Node.js 22 and one direct package dependency, the official `@supabase/supabase-js` client. The original Coresignal harness remains available. Production code uses small, readable modules. The former physical line ceiling was removed at the user's request; the sole-runtime-dependency constraint remains tested.
 
 ## Setup
 
@@ -20,6 +20,24 @@ The runtime uses native Node.js 22 and one direct package dependency, the offici
    Keep server credentials local. The legacy `SUPABASE_SERVICE_ROLE_KEY` also works. Missing provider keys cause that provider to be skipped.
 3. For a fresh Supabase project, use its SQL Editor to run [`schema.sql`](schema.sql) first, then all of [`sql/002_canonical_people_and_changes.sql`](sql/002_canonical_people_and_changes.sql). Migration 002 adds canonical people, the change ledger, snapshot links, the atomic import RPC, and the private avatar bucket while preserving existing snapshot columns and reviews. These base migrations are applied to the current pilot; see the hosted audit below.
 4. Optional human-review surfaces: apply [`migrations/20261015174745_people_review_views.sql`](migrations/20261015174745_people_review_views.sql) after migration 002. It provides two read-only, service-role-only views. It is now applied and verified in the pilot through the authenticated dashboard SQL Editor and SDK/Data API readback; [hosted audit](docs/audit-and-review-views-2026-10-15.md) records the actual results. Fresh projects still need this file.
+
+## Plain-text person search
+
+Pass a personal LinkedIn URL inside text, or a first/last name with company or location context:
+
+```bash
+npm run people -- --query "parse linkedin.com/in/approved-person" --providers coresignal
+npm run people -- --query "First Last at Approved Company" --providers pdl
+npm run people -- "First Last in Tulsa" --providers pdl
+```
+
+These are live requests unless `--offline` is supplied. Name queries require PDL in the selected providers. With `--providers pdl,coresignal,brightdata`, PDL resolves first; the other two run only if a deterministic evidence gate accepts the candidate. The default provider selection includes all three. Choose `--providers pdl` for a single-request resolution test.
+
+The score and interval are **heuristic policy bounds, not calibrated identity probabilities**. Every name-discovered candidate stays `unverified_search_match` and requires human review, including after provider followups, saved-file replay and Bright Data download. Search cannot overwrite an existing verified person's facts. A known URL supplied directly retains the ordinary URL-agreement path.
+
+The parser handles a bounded set of place names and US states; use explicit `at`, `in`, `--company`, or `--location` for ambiguity. It takes the first two name tokens; use `--resolve` flags for multiword names. It does not generate profile facts or perform KYC, broad prospect discovery, or email/phone matching.
+
+See [operations](docs/OPERATIONS.md#plain-text-search-and-the-decision-receipt) for the exact formula and receipt, [Jev research](docs/jev-harness-research-2026-10-15.md) for inspected repositories, and [the implementation account](docs/plain-text-search-2026-10-15.md) for behavior, tests and limits. No extra key, dependency, SQL migration or hosted deployment is required for this change.
 
 ## Start with one call
 
@@ -69,7 +87,7 @@ This command makes one Bright Data download request. It does not start another c
 
 ## Other commands
 
-Resolve a name with context through PDL; the result requires identity review:
+Resolve a name with context through PDL; the same gate applies. Selecting additional providers permits the guarded URL waterfall. The result requires identity review:
 
 ```bash
 npm run people -- --resolve --first "Chris" --last "Maresca" --company "Helmsted" --location "Oklahoma" --providers pdl
@@ -113,7 +131,7 @@ npm run demo
 
 Use `npm run people -- --replay "runs/<id>.json"` to apply a saved original run to the new canonical tables. It preserves that run ID. The legacy `import` command writes only the original snapshot table.
 
-Earlier live checks returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [historical SDK validation report](docs/validation-2026-10-15.md) records that block's provider coverage, 64 passing tests, and 649 runtime lines. Current verification has **78 passing tests, zero failures/skips, and 653 runtime lines**. The review views are deployed; the [audit report](docs/audit-and-review-views-2026-10-15.md) records fresh hosted results and the dashboard/SDK mechanisms used.
+Earlier live checks returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [historical SDK validation report](docs/validation-2026-10-15.md) records that block's provider coverage, 64 passing tests, and 649 runtime lines. The hosted-audit block recorded **78 passing tests, zero failures/skips, and 653 runtime lines**. The subsequent search feature has **105 passing tests, zero failures/skips, and 1,016 readable runtime lines** after the user removed the ceiling; see [the implementation account](docs/plain-text-search-2026-10-15.md). The review views are deployed; the [audit report](docs/audit-and-review-views-2026-10-15.md) records fresh hosted results and the dashboard/SDK mechanisms used.
 
 That earlier SDK validation observed one canonical person, four linked snapshots, two change events, matching local/hosted hash, and idempotent replay. The combined profile had nine employment entries, two current roles, five education entries, and `needs_manual_review=true`; a separate targeted photo test verified private upload/read restrictions. Fresh physical checks reproduced that data baseline, replayed the cached Coresignal run twice without changing counts/hash, and queried the deployed views: one review-queue row and 20 disagreement rows. This used authenticated SQL Editor execution plus SDK readback, not a plugin SQL tool. No provider/CDN request was made. Manual accuracy across the proposed ten-profile sample remains unmeasured. Start with the [physical-testing guide](docs/PHYSICAL_TEST.md).
 

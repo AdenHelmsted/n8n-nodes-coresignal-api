@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { requestCached } from './src/providers/request.js';
+import { normalizeLinkedinUrl } from './src/identifiers.js';
 
 const API = 'https://api.coresignal.com/cdapi/v2/employee_multi_source/collect/';
 const SOURCES = {
@@ -14,17 +15,9 @@ const SOURCES = {
   education: 'education', profile_picture_ref: 'picture_url',
 };
 
-// Adapted from OpenProspector's linkedinSlug; validate the host and entire path.
+// Keep the legacy absolute-URL input and trailing slash; share the validated parser.
 export function linkedinUrl(input) {
-  const url = new URL(input.trim());
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port
-      || !/^(?:www\.|[a-z]{2,3}\.)?linkedin\.com$/i.test(url.hostname)) {
-    throw new Error('Use a LinkedIn profile URL: https://www.linkedin.com/in/person/');
-  }
-  const match = /^\/in\/([^/]+)\/?$/.exec(url.pathname);
-  const slug = match && decodeURIComponent(match[1]).normalize('NFC').toLowerCase();
-  if (!slug || !/^[\p{L}\p{N}_-]+$/u.test(slug)) throw new Error('Invalid LinkedIn profile path.');
-  return `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`;
+  return `${normalizeLinkedinUrl(new URL(input.trim()).href)}/`;
 }
 
 // Adapted from OpenProspector's vendorFetch. One request, with no retries/redirects.

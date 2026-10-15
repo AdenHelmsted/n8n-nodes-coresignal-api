@@ -1,6 +1,6 @@
 # Physical test: the first ten approved people
 
-Keep production JavaScript unchanged during this test. Use the existing CLI and manual review to learn where provider data is accurate, incomplete, stale, or duplicated. Do not add fuzzy matching, overrides, or background refresh before reviewing the sample with Chris.
+This guide records the earlier hosted baseline. The user subsequently authorized the plain-text search feature and removed its line ceiling; see [the implementation account](plain-text-search-2026-10-15.md). During the upcoming human sample, keep production behavior stable while collecting review evidence. Use the existing CLI and manual review to learn where provider data is accurate, incomplete, stale, or duplicated. Do not add fuzzy matching, overrides, or background refresh before reviewing the sample with Chris.
 
 ## What has been checked
 
@@ -40,9 +40,9 @@ npm test
 npm run people -- --url "https://www.linkedin.com/in/synthetic-person" --providers coresignal,pdl,brightdata --offline
 ```
 
-Expected test summary: 78 passed, zero failed/skipped. Expected fictional CLI summary: all three providers matched, estimates null, four employment entries, two education entries, and review required. This is fixture behavior, not a live provider observation.
+Current expected test summary: 105 passed, zero failed/skipped. The 78-test/653-line figures above describe the earlier hosted baseline. Expected fictional CLI summary: all three providers matched, estimates null, four employment entries, two education entries, and review required. This is fixture behavior, not a live provider observation.
 
-The full suite needs external test-only PGlite. Without it, three database containers skip and their nested tests do not register: 51 passed/three skipped is not the complete 78-test check. The validated WSL installation is discoverable at `/tmp/helmsted-schema-check/node_modules/@electric-sql/pglite/dist/index.js`; see [operations](OPERATIONS.md) if it is unavailable. No application dependency or JavaScript change is needed for the existing validated setup.
+The full suite needs external test-only PGlite. Without it, database tests skip and nested tests do not all register; any skipped database suite is an incomplete check. The current full suite includes three additional search/database scenarios. The validated WSL installation is discoverable at `/tmp/helmsted-schema-check/node_modules/@electric-sql/pglite/dist/index.js`; see [operations](OPERATIONS.md) if it is unavailable. No application dependency or JavaScript change is needed for the existing validated setup.
 
 ## 2. Inspect the already-deployed review views
 
