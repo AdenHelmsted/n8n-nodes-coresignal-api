@@ -49,11 +49,17 @@ Production JavaScript: **649 physical lines**, including the legacy harness. The
 
 ## Hosted Supabase status
 
-The original `person_enrichments` table contains the previously verified Coresignal snapshot. A live read confirmed one profile, one Coresignal row and a pending manual review.
+The user applied migration `sql/002_canonical_people_and_changes.sql` in the hosted project's SQL Editor. Live preflight verified the canonical table, additive snapshot columns, change ledger and transactional RPC.
 
-Migration `sql/002_canonical_people_and_changes.sql` is prepared and locally verified. At this report's creation, hosted deployment is pending the user's SQL Editor execution: the available Data API credential cannot run DDL and the CLI has no login token. After deployment, import the saved successful responses with `--replay`; this requires no new provider or CDN requests. Photo bytes remain unpopulated during replay by design.
+The four saved envelopes were then imported with replay semantics: three successful provider responses and Bright Data's earlier account-activation failure. Hosted read-back confirmed **one canonical person, four linked snapshots, and two change events**, with the same combined profile hash as the local merge. Every snapshot review remains pending. A second replay of all four IDs returned `replayed: true`; counts, selected facts and change events were unchanged. Both passes made zero provider or CDN requests.
 
-No weekly scheduler, client-facing access, household linking or production rollout is enabled. Weekly refresh is an explicit, capped CLI command.
+The change events reflect new claims entering the combined record as providers were imported. They do not establish that Chris actually changed jobs or education during this experiment.
+
+A separate targeted storage smoke test downloaded the photo from the cached successful Bright Data response's approved CDN URL. It validated and uploaded **8,235 JPEG bytes**, saved the private object path and SHA on the canonical person, and retained the originating provider, enrichment UUID, retrieval time and source URL in field provenance. The metadata write used an update-timestamp check; the core profile hash stayed unchanged.
+
+The `person-avatars` bucket was confirmed private. A temporary signed read returned HTTP 200 and bytes with the expected SHA; an unauthenticated public-object read returned HTTP 400. The signed URL was not published or stored as the canonical reference. This targeted check used one CDN download and zero provider lookups. Normal CLI replay still skips photo downloads and uploads.
+
+No weekly scheduler, client-facing access, household linking or production rollout is enabled. Weekly refresh is an explicit, capped CLI command. Hosted functional verification does not replace the pending human factual review.
 
 ## Remaining pilot evidence
 

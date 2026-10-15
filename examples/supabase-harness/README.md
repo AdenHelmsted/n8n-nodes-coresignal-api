@@ -18,7 +18,7 @@ The runtime uses native Node.js 22 and one direct package dependency, the offici
    ```
 
    Keep server credentials local. The legacy `SUPABASE_SERVICE_ROLE_KEY` also works. Missing provider keys cause that provider to be skipped.
-3. In the intended Supabase project's SQL Editor, run [`schema.sql`](schema.sql) first, then all of [`sql/002_canonical_people_and_changes.sql`](sql/002_canonical_people_and_changes.sql). Migration 002 adds canonical people, the change ledger, snapshot links, the atomic import RPC, and the private avatar bucket while preserving existing snapshot columns and reviews. **The hosted migration still needs to be applied; providing the SQL does not deploy it.**
+3. For a fresh Supabase project, use its SQL Editor to run [`schema.sql`](schema.sql) first, then all of [`sql/002_canonical_people_and_changes.sql`](sql/002_canonical_people_and_changes.sql). Migration 002 adds canonical people, the change ledger, snapshot links, the atomic import RPC, and the private avatar bucket while preserving existing snapshot columns and reviews. Both migrations are now applied to the configured hosted pilot; its verification is recorded below.
 
 ## Start with one call
 
@@ -110,7 +110,9 @@ npm run demo
 
 Use `npm run people -- --replay "runs/<id>.json"` to apply a saved original run to the new canonical tables. It preserves that run ID. The legacy `import` command writes only the original snapshot table.
 
-Live provider checks have returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [validation report](docs/validation-2026-10-15.md) records provider coverage, the combined record, **64 passing tests with no skips**, and **649 runtime lines**. These checks establish working requests and URL agreement; they do not establish enrichment accuracy across the proposed ten-profile sample or prove the hosted canonical migration is deployed.
+Live provider checks have returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [validation report](docs/validation-2026-10-15.md) records provider coverage, **64 passing tests with no skips**, and **649 runtime lines**.
+
+Hosted migration preflight now passes. Replaying the four cached responses produced one canonical person, four linked snapshots, and two change events without new provider requests. Replaying them again left those counts and the profile hash unchanged. The hosted profile matches the local combined record: nine employment entries, two current roles, five education entries, and `needs_manual_review=true`. A separate targeted photo test verified private upload, signed read, and blocked anonymous public read; normal CLI replay still makes no CDN requests. These checks establish working requests, identifier agreement, and hosted database/storage behavior; manual accuracy across the proposed ten-profile sample remains unmeasured.
 
 See [operations](docs/OPERATIONS.md) for request budgets, failure recovery, merge rules, review steps, and optional PostgreSQL schema tests. Provider storage, retention, and reuse permissions remain unresolved before client rollout. Tenant integration and a production application are not implemented here.
 
