@@ -32,8 +32,8 @@ export async function vendorFetch(url, apiKey, fetchImpl = fetch) {
   const response = await requestCached('coresignal', { url: `https://www.linkedin.com/in/${new URL(url).pathname.split('/').at(-1)}/` }, url, {
     method: 'GET', headers: { Accept: 'application/json', apikey: apiKey },
     redirect: 'error', signal: AbortSignal.timeout(30_000),
-  }, { fetchImpl, secret: apiKey, estimatedCredits: 10 });
-  return { status: response.http_status, body: response.raw_payload, creditsRemaining: response.credits_remaining, local_cache_path: response.local_cache_path };
+  }, { fetchImpl, secret: apiKey });
+  return { status: response.http_status, body: response.raw_payload, creditsRemaining: response.credits_remaining, local_cache_path: response.local_cache_path, billing_headers: response.billing_headers ?? null };
 }
 
 export function makeSnapshot(requestedUrl, result, { id = randomUUID(), retrievedAt = new Date().toISOString() } = {}) {
@@ -59,9 +59,9 @@ export function makeSnapshot(requestedUrl, result, { id = randomUUID(), retrieve
     ...person, retrieved_at: retrievedAt, provider_record_id: record.id == null ? null : String(record.id),
     source_updated_at: record.updated_at ?? null, match_status: match,
     http_status: result.status, request_count: 1,
-    estimated_credits: result.status === 200 ? 10 : null,
+    estimated_credits: null,
     credits_remaining: result.creditsRemaining ?? null,
-    provenance: { endpoint: result.endpoint ?? null, bundle: 'core_employee_data', fields: sources, cache_path: result.local_cache_path ?? null },
+    provenance: { endpoint: result.endpoint ?? null, bundle: 'core_employee_data', fields: sources, cache_path: result.local_cache_path ?? null, billing_headers: result.billing_headers ?? null },
     raw_response: raw ?? null,
   };
 }
@@ -131,7 +131,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     if (!snapshot.provenance.synthetic) {
       snapshot = makeSnapshot(snapshot.requested_linkedin_url, {
         status: snapshot.http_status, body: snapshot.raw_response,
-        creditsRemaining: snapshot.credits_remaining, endpoint: snapshot.provenance.endpoint, local_cache_path: snapshot.provenance.cache_path,
+        creditsRemaining: snapshot.credits_remaining, endpoint: snapshot.provenance.endpoint, local_cache_path: snapshot.provenance.cache_path, billing_headers: snapshot.provenance.billing_headers ?? null,
       }, { id: snapshot.id, retrievedAt: snapshot.retrieved_at });
       await writeFile(input, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
     }
@@ -149,7 +149,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       : await collectPerson(input, env.CORESIGNAL_API_KEY);
     if (command === 'demo') {
       snapshot.request_count = 0;
-      snapshot.estimated_credits = 0;
+      snapshot.estimated_credits = null;
       snapshot.provenance.synthetic = true;
     }
     console.log(`Saved run: ${await writeRun(snapshot)}`);

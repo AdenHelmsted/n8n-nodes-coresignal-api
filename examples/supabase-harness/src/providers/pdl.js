@@ -21,5 +21,5 @@ export async function collect(input, { env = process.env, fetchImpl = fetch, cac
   const endpoint = `https://api.peopledatalabs.com/v5/person/enrich?${params}`;
   return requestCached('pdl', input, endpoint, {
     method: 'GET', headers: { 'X-Api-Key': key, Accept: 'application/json' }, signal: AbortSignal.timeout(30_000),
-  }, { fetchImpl, cacheDir, estimatedCredits: 1, secret: key });
+  }, { fetchImpl, cacheDir, secret: key });
 }

@@ -52,7 +52,9 @@ test('cached provider response -> official Supabase SDK -> SQL canonical merge, 
     const raw = fixtures[provider];
     const envelope = await adapter({ url: 'https://www.linkedin.com/in/synthetic-person' }, {
       env: { CORESIGNAL_API_KEY: 'core-test', PDL_API_KEY: 'pdl-test', BRIGHTDATA_API_KEY: 'bright-test' }, cacheDir: folder,
-      fetchImpl: async () => { providerCalls++; return json(raw); },
+      fetchImpl: async () => { providerCalls++; const response = json(raw);
+        if (provider === 'pdl') response.headers.set('X-Call-Credits-Spent', '0001');
+        return response; },
     });
     assert.deepEqual(JSON.parse(await readFile(envelope.local_cache_path, 'utf8')).raw_payload, raw);
     envelopes.push(envelope);
@@ -63,6 +65,11 @@ test('cached provider response -> official Supabase SDK -> SQL canonical merge, 
   assert.deepEqual(people[0].providers_contributed, ['brightdata', 'coresignal', 'pdl']);
   assert.ok(people[0].employment_history.filter(job => job.is_current).length >= 2);
   assert.equal(people[0].field_provenance.full_name.provider, 'coresignal');
+  const snapshots = (await sql.query('select provider_name, estimated_credits, provenance from public.person_enrichments')).rows;
+  for (const snapshot of snapshots) {
+    assert.equal(snapshot.estimated_credits, null);
+    assert.deepEqual(snapshot.provenance.billing_headers, snapshot.provider_name === 'pdl' ? { 'x-call-credits-spent': '0001' } : null);
+  }
   const priorEvents = (await sql.query('select count(*)::int as count from public.person_changes')).rows[0].count;
   const changed = structuredClone(fixtures.coresignal);
   changed.updated_at = '2026-10-15T23:00:00Z'; changed.headline = 'Updated professional headline';

@@ -63,7 +63,7 @@ export function normalizeSnapshot(provider, envelope) {
     : pdl ? { full_name: 'full_name', first_name: 'first_name', last_name: 'last_name', headline: p.headline ? 'headline' : 'derived:job_title+job_company_name', location: 'location_name', employment_history: 'experience', education: 'education' }
       : { full_name: 'name', first_name: 'first_name', last_name: 'last_name', headline: 'position', location: p.location ? 'location' : 'city', employment_history: 'experience', education: 'education', avatar_source_url: 'avatar' };
   fields.returned_linkedin_url = core ? (p.linkedin_url ? 'linkedin_url' : 'professional_network_url') : pdl ? 'linkedin_url' : 'url';
-  return { ...envelope, provider_name: provider, provider_record_id: p.id == null ? null : String(p.id), requested_linkedin_url: requested, returned_linkedin_url: returned,
+  return { ...envelope, estimated_credits: null, billing_headers: envelope.billing_headers ?? null, provider_name: provider, provider_record_id: p.id == null ? null : String(p.id), requested_linkedin_url: requested, returned_linkedin_url: returned,
     identity_status: lowConfidence || p.is_deleted === 1 || p.is_deleted === true || !returned ? 'missing_url' : !requested ? 'search_match' : requested === returned ? 'matched' : 'mismatch',
     full_name: text(core || pdl ? p.full_name : p.name), first_name: text(p.first_name), last_name: text(p.last_name),
     headline: text(core ? p.headline : pdl ? p.headline || (p.job_title && p.job_company_name ? `${p.job_title} at ${p.job_company_name}` : p.job_title) : p.position),

@@ -27,8 +27,9 @@ test('one Coresignal core lookup uses the official path and apikey header', asyn
   assert.equal(calls, 1);
   assert.equal(row.match_status, 'matched_url');
   assert.equal(row.request_count, 1);
-  assert.equal(row.estimated_credits, 10);
+  assert.equal(row.estimated_credits, null);
   assert.equal(row.credits_remaining, 1990);
+  assert.deepEqual(row.provenance.billing_headers, { 'x-credits-remaining': '1990' });
   assert.equal(row.provenance.fields.profile_picture_ref, 'picture_url');
   assert.equal(row.location, fixture.location_full);
   assert.deepEqual(row.employment_history, fixture.experience);

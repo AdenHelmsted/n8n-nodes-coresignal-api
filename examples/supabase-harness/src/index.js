@@ -16,7 +16,7 @@ export async function replayFile(file, processSnapshot) {
   // Also accept the original harness's runs/*.json without calling a provider.
   if (!envelope.raw_payload && envelope.raw_response !== undefined) {
     Object.assign(envelope, { input: { url: envelope.requested_linkedin_url }, raw_payload: envelope.raw_response,
-      endpoint: envelope.provenance?.endpoint, local_cache_path: resolve(file) });
+      endpoint: envelope.provenance?.endpoint, local_cache_path: resolve(file), billing_headers: envelope.provenance?.billing_headers ?? null });
   }
   if (!adapters[envelope.provider] || !envelope.id || !envelope.retrieved_at || envelope.raw_payload === undefined) throw new Error('Not a saved provider envelope.');
   return processSnapshot(normalizeSnapshot(envelope.provider, envelope), { replay: true });
@@ -56,7 +56,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       try {
         if (!input.url && provider !== 'pdl') { console.log(`${provider}: skipped (URL required).`); continue; }
         const envelope = v.offline ? { id: randomUUID(), provider, input, http_status: 200,
-          retrieved_at: '2026-10-15T00:00:00Z', request_count: 0, estimated_credits: 0, local_cache_path: 'offline fixture',
+          retrieved_at: new Date().toISOString(), request_count: 0, estimated_credits: null, local_cache_path: 'offline fixture',
           raw_payload: JSON.parse(await readFile(new URL(`../test/fixtures/${provider}.json`, import.meta.url), 'utf8')) }
           : await adapters[provider](input, { env });
         if (!envelope) { console.log(`${provider}: skipped (missing key or unsupported input).`); continue; }

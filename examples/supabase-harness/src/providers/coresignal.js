@@ -9,5 +9,5 @@ export async function collect(input, { env = process.env, fetchImpl = fetch, cac
   const endpoint = `https://api.coresignal.com/cdapi/v2/employee_multi_source/collect/${url.split('/')[4]}?bundle=core_employee_data`;
   return requestCached('coresignal', { url }, endpoint, {
     method: 'GET', headers: { apikey: key, Accept: 'application/json' }, signal: AbortSignal.timeout(30_000),
-  }, { fetchImpl, cacheDir, estimatedCredits: 10, secret: key });
+  }, { fetchImpl, cacheDir, secret: key });
 }

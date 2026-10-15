@@ -18,7 +18,8 @@ The runtime uses native Node.js 22 and one direct package dependency, the offici
    ```
 
    Keep server credentials local. The legacy `SUPABASE_SERVICE_ROLE_KEY` also works. Missing provider keys cause that provider to be skipped.
-3. For a fresh Supabase project, use its SQL Editor to run [`schema.sql`](schema.sql) first, then all of [`sql/002_canonical_people_and_changes.sql`](sql/002_canonical_people_and_changes.sql). Migration 002 adds canonical people, the change ledger, snapshot links, the atomic import RPC, and the private avatar bucket while preserving existing snapshot columns and reviews. Both migrations are now applied to the configured hosted pilot; its verification is recorded below.
+3. For a fresh Supabase project, use its SQL Editor to run [`schema.sql`](schema.sql) first, then all of [`sql/002_canonical_people_and_changes.sql`](sql/002_canonical_people_and_changes.sql). Migration 002 adds canonical people, the change ledger, snapshot links, the atomic import RPC, and the private avatar bucket while preserving existing snapshot columns and reviews. Earlier SDK checks recorded these migrations applied to the pilot; see the historical validation below.
+4. Optional human-review surfaces: apply [`migrations/20261015174745_people_review_views.sql`](migrations/20261015174745_people_review_views.sql) after migration 002. It provides two read-only, service-role-only views. Its hosted application and verification through the Supabase plugin are pending connection; [current audit status](docs/audit-and-review-views-2026-10-15.md) distinguishes prepared work from observed hosted results.
 
 ## Start with one call
 
@@ -55,6 +56,8 @@ npm run people -- --replay ".cache/raw/<saved-response>.json"
 ```
 
 Replay can call Supabase. It makes zero provider or CDN requests. Replaying the same ID preserves the original snapshot and its manual review; an already-applied snapshot does not run the canonical merge again.
+
+New responses retain present billing/rate-limit headers verbatim in `billing_headers`; missing headers and older caches produce `null`. The harness no longer estimates credit costs. A remaining balance is not a measured charge, and replay cannot recover headers that were never saved.
 
 If Bright Data returns HTTP 202 with a `snapshot_id`, download the result of that existing job once:
 
@@ -110,9 +113,9 @@ npm run demo
 
 Use `npm run people -- --replay "runs/<id>.json"` to apply a saved original run to the new canonical tables. It preserves that run ID. The legacy `import` command writes only the original snapshot table.
 
-Live provider checks have returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [validation report](docs/validation-2026-10-15.md) records provider coverage, **64 passing tests with no skips**, and **649 runtime lines**.
+Earlier live checks returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [historical SDK validation report](docs/validation-2026-10-15.md) records that block's provider coverage, 64 passing tests, and 649 runtime lines. Current header/review-view verification has **77 passing tests, zero failures/skips, and 653 runtime lines**; details and pending plugin-only hosted steps are in the [audit report](docs/audit-and-review-views-2026-10-15.md).
 
-Hosted migration preflight now passes. Replaying the four cached responses produced one canonical person, four linked snapshots, and two change events without new provider requests. Replaying them again left those counts and the profile hash unchanged. The hosted profile matches the local combined record: nine employment entries, two current roles, five education entries, and `needs_manual_review=true`. A separate targeted photo test verified private upload, signed read, and blocked anonymous public read; normal CLI replay still makes no CDN requests. These checks establish working requests, identifier agreement, and hosted database/storage behavior; manual accuracy across the proposed ten-profile sample remains unmeasured.
+That earlier SDK validation observed one canonical person, four linked snapshots, two change events, matching local/hosted hash, and idempotent replay. The combined profile had nine employment entries, two current roles, five education entries, and `needs_manual_review=true`; a separate targeted photo test verified private upload/read restrictions. Those are historical SDK observations, not a fresh plugin audit. This block makes no provider/CDN requests; plugin-only hosted audit and view verification remain pending. Manual accuracy across the proposed ten-profile sample remains unmeasured.
 
 See [operations](docs/OPERATIONS.md) for request budgets, failure recovery, merge rules, review steps, and optional PostgreSQL schema tests. Provider storage, retention, and reuse permissions remain unresolved before client rollout. Tenant integration and a production application are not implemented here.
 

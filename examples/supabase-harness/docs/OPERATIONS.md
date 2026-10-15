@@ -22,10 +22,11 @@ In Supabase's SQL Editor, apply the complete files in this order:
 
 1. [`../schema.sql`](../schema.sql): existing `person_enrichments` table and permissions.
 2. [`../sql/002_canonical_people_and_changes.sql`](../sql/002_canonical_people_and_changes.sql): canonical tables, additive snapshot columns, indexes, private avatar bucket, and `apply_person_enrichment` RPC.
+3. Optional: [`../migrations/20261015174745_people_review_views.sql`](../migrations/20261015174745_people_review_views.sql), adding service-role-only, read-only review views after migration 002. Hosted application through the plugin is pending; see [audit status](audit-and-review-views-2026-10-15.md).
 
 Migration 002 expects UUID snapshot IDs and preserves baseline columns and manual reviews. It is repeatable and sets the avatar bucket private even if that bucket already exists. Snapshot import uses the official SDK; the RPC atomically applies the canonical record, any required change event, and the snapshot link.
 
-Migration 002 is now applied to the configured hosted pilot, and hosted preflight passes. Fresh projects still need both SQL files above. Before collecting, CLI preflight checks both new tables, the additive snapshot columns, and RPC availability/permissions using a deliberately missing snapshot UUID. That RPC probe must return `23503` and writes no data. Replay an existing cached response to check a newly configured database path without another provider credit. A publishable/anonymous key cannot operate the internal tables. Anonymous and authenticated roles have no table access or RPC execution permission under these migrations.
+Earlier SDK validation recorded migration 002 applied and hosted preflight passing. The current mission requires fresh audit/application/query checks through the Supabase plugin; those remain pending authenticated plugin SQL tools. Fresh projects still need the base SQL files above. Before collecting, CLI preflight checks both new tables, additive snapshot columns, and RPC availability/permissions using a deliberately missing snapshot UUID. That probe must return `23503` and writes no data. Replay an existing response to check a newly configured database without another provider call. A publishable/anonymous key cannot operate these internal tables. Anonymous and authenticated roles have no table access or RPC execution permission under these migrations.
 
 ## Choose the request scope
 
@@ -56,16 +57,27 @@ The normalizer accepts LinkedIn personal profile URLs, including scheme-less pro
 
 | Operation | External requests and limits |
 | --- | --- |
-| Coresignal lookup | One GET, core bundle, 30-second timeout; estimated 10 credits for HTTP 200. |
-| PDL lookup/resolution | One GET, `min_likelihood=6`, 30-second timeout; estimated one credit for HTTP 200. |
-| Bright Data collection | One POST to the LinkedIn Profiles dataset, 70-second timeout; no local credit-price estimate. |
+| Coresignal lookup | One GET, core bundle, 30-second timeout. |
+| PDL lookup/resolution | One GET, `min_likelihood=6`, 30-second timeout. |
+| Bright Data collection | One POST to the LinkedIn Profiles dataset, 70-second timeout. |
 | Bright Data finish | One GET for an existing `snapshot_id`, 30-second timeout; no new collection. |
 | Avatar | Separate eligible CDN request, five-second timeout; skipped during replay. |
 | Canonical CAS retry | At most three database application attempts; no new enrichment request. |
 
 Provider requests reject redirects and do not retry automatically. There is no automatic polling, fallback search, or resubmission. A new live invocation is a new attempt and may consume credits. Even a timeout can leave a completed or charged upstream request; inspect evidence and the provider dashboard before collecting again.
 
-`request_count` records an attempted provider HTTP request. `estimated_credits` is an estimate, not a measured debit. `credits_remaining` records the returned `x-credits-remaining` header where available; it is a balance, not consumption. Bright Data downloads record `request_kind: snapshot_download`, `collection_request_count: 0`, and links to the originating collection. Check download usage and charges in the provider account as well.
+`request_count` records an attempted provider HTTP request. New writes set the compatibility column `estimated_credits` to `null`; no pricing-derived charge is calculated. `credits_remaining` can retain an observed numeric balance but is not consumption. Bright Data downloads record `request_kind: snapshot_download`, `collection_request_count: 0`, and links to the originating collection. Check account usage and charges independently.
+
+### Billing and rate-limit evidence
+
+The request wrapper reads these response-header names case-insensitively and keeps present values as strings in `billing_headers`:
+
+- `x-credits-remaining`, `x-ratelimit-remaining`, and `retry-after`.
+- `x-call-credits-spent`, `x-call-credits-type`, `x-totallimit-remaining`, `x-totallimit-purchased-remaining`, and `x-lifetime-used`.
+
+The object is saved in the raw cache envelope before normalization and copied into snapshot provenance. If none are returned, it is `null`. Older caches lacking the object also produce `null`; replay does not reconstruct a header from a balance scalar or price table. A provider-reported credit-spent header is evidence in that provider's units, not a monetary invoice. Remaining quotas and lifetime totals do not establish a particular request's billed debit.
+
+The four original Chris files saved no raw header object. The Coresignal run retained a 1,990 balance scalar and a computed estimate of 10; PDL retained a computed estimate of 1; both Bright Data attempts retained null estimates/balances. Those historical estimates were not measured charges. Original evidence stays unchanged, and duplicate-safe replay does not rewrite existing stored snapshots to manufacture header evidence. See the [local metadata audit](audit-and-review-views-2026-10-15.md).
 
 ## Raw cache and recovery
 
@@ -125,9 +137,24 @@ For the initial approximately ten-profile sample, include approved people with s
 1. Compare returned identity/requested URL against the approved reference.
 2. Check name, headline, location, every job, education, and picture availability against the manually reviewed profile.
 3. Set `review_status`, describe wrong matches/stale claims/omissions/conflicts in `review_notes`, and set `reviewed_at`.
-4. Record request counts/estimates alongside dashboard usage. Separate identity accuracy, completeness, and freshness.
+4. Record request counts, actually captured headers, and dashboard usage. Mark missing billing evidence unmeasured. Separate identity accuracy, completeness, and freshness.
 
 Review fields are audit labels, not an approval workflow. Marking a previously merged snapshot `wrong` does not roll back canonical fields. Corrections, review resolution, and production acceptance require operator handling; this CLI does not implement that workflow.
+
+### Read-only review views
+
+The optional review migration provides `public.v_review_queue` (one row per person) and `public.v_person_claim_disagreements` (one row per field with recorded conflicts, including employment/education fields). Both use invoker security and grant only `SELECT` to `service_role`; their query structure prevents updates. They preserve existing permissions and do not modify people, snapshots, claims, or hashes.
+
+Queue `linkedin_url` aliases `people.canonical_linkedin_url`. Review notes come from linked snapshots. Its review summary prioritizes `wrong`, then `uncertain`, then `pending`, then `correct`; it is not new identity verification. Employment/education counts count canonical entries, while `conflicting_field_count` counts displayed fields with recorded conflicts. `all_provider_claims` contains the selected claim and recorded competing claims, not a reconstruction of every provider's identical or absent claims.
+
+After applying the migration, SQL reviewers can inspect:
+
+```sql
+select * from public.v_review_queue order by updated_at desc;
+select * from public.v_person_claim_disagreements order by person_id, claim_type;
+```
+
+For the current mission, execute/apply/verify these through the connected Supabase plugin. SQL Editor application is an alternative for fresh manual setup, but it is not a substitute for claiming plugin verification. Current hosted view application/query results remain unobserved pending connection.
 
 ## Canonical selection, provenance, and changes
 
@@ -177,11 +204,11 @@ npm run people -- --url "https://www.linkedin.com/in/synthetic-person" --offline
 
 Tests cover baseline behavior, provider contracts/cache ordering, normalization, conflicts/concurrent jobs, stable hashes, diffs, replay, CAS, and avatar limits. Transport tests use the official Supabase client without a hosted project. Schema and full-pipeline integration tests use optional **test-only** PGlite and skip when unavailable. `test/schema.test.js` documents an isolated installation; `PGLITE_MODULE_PATH` can point to its module entry for both suites. PGlite is not an application dependency. A skipped database suite does not verify hosted deployment.
 
-The [validation report](validation-2026-10-15.md) records 64 passing tests, no failures/skips, and 649 production JavaScript lines including the legacy harness. Live checks succeeded for the approved profile with Coresignal, PDL, and Bright Data and matching returned URLs. Bright Data's inactive-account HTTP 400 remains cached beside the later success.
+The [historical SDK validation report](validation-2026-10-15.md) records that earlier block's 64 passing tests and 649 production JavaScript lines. Provider checks succeeded for the approved profile with matching returned URLs; Bright Data's inactive-account HTTP 400 remains cached beside its later success. Current verification reports **77 passing tests, zero failures/skips, and 653 production JavaScript lines** in the [new audit report](audit-and-review-views-2026-10-15.md). The full local database suites used external test-only PGlite; application dependencies and the lockfile were unchanged.
 
-After the user applied migration 002, hosted preflight passed and all four original cached envelopes were replayed without new provider requests. Hosted verification found one canonical person, four linked snapshots, and two change events. Replaying all four again returned `replayed=true` and left counts and hash unchanged. The combined record contains nine employment entries, two current roles, and five education entries, with `needs_manual_review=true`. Its hash agrees with the local merge: `d34dcb1fadf713d7d4c319686a0ee6bbb69279def6b6e4c5f9573a5f2d682e02`.
+Earlier SDK checks recorded one hosted person, four linked snapshots, two change events, and idempotent replay. The combined record contained nine employment entries, two current roles, five education entries, and `needs_manual_review=true`. Its local/hosted hash agreed: `d34dcb1fadf713d7d4c319686a0ee6bbb69279def6b6e4c5f9573a5f2d682e02`. These are historical observations, not a fresh plugin query.
 
-A separate targeted avatar check used the cached Bright Data source URL for one CDN download, stored an 8,235-byte JPEG in the private bucket, and verified its SHA through a short-lived signed read returning HTTP 200. Anonymous public read returned HTTP 400. Canonical avatar provenance records provider, enrichment UUID, retrieval time, source URL, and digest; the profile hash remained unchanged. This check made zero new enrichment-provider requests and does not change normal replay's zero-CDN behavior. These establish hosted import, idempotency, evidence linkage, and private photo storage; manual sample accuracy remains unmeasured. See the report for full evidence.
+That earlier block also recorded an 8,235-byte JPEG in the private avatar bucket, signed-read HTTP 200 with matching SHA, and anonymous-public-read HTTP 400. It used a separate CDN download and did not change the profile hash. The current block makes no provider/CDN calls; storage state still needs the requested fresh plugin inspection. Manual sample accuracy remains unmeasured.
 
 ## Before client rollout
 

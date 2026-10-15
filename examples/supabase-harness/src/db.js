@@ -22,9 +22,9 @@ export function snapshotRow(snapshot) {
     employment_history: s.employment_history, education: s.education, profile_picture_ref: s.avatar_source_url,
     retrieved_at: s.retrieved_at, provider_record_id: s.provider_record_id, source_updated_at: s.source_updated_at,
     match_status: s.http_status !== 200 ? 'unavailable' : ({ matched: 'matched_url', mismatch: 'mismatch' }[s.identity_status] || 'unverified'),
-    http_status: s.http_status, request_count: s.request_count ?? 0, estimated_credits: s.estimated_credits ?? null,
+    http_status: s.http_status, request_count: s.request_count ?? 0, estimated_credits: null,
     credits_remaining: s.credits_remaining ?? null, raw_response: s.raw_payload,
-    provenance: { ...s.provenance, identity_status: s.identity_status, input: s.input, cache_path: s.local_cache_path,
+    provenance: { ...s.provenance, identity_status: s.identity_status, input: s.input, cache_path: s.local_cache_path, billing_headers: s.billing_headers ?? null,
       request_kind: s.request_kind || 'collection', parent_collection_id: s.parent_collection_id ?? null,
       parent_cache_path: s.parent_cache_path ?? null, collection_request_count: s.collection_request_count ?? s.request_count ?? 0 } };
 }

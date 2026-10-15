@@ -35,7 +35,7 @@ test('Coresignal preserves tested core bundle/auth, makes one request and caches
   assert.equal(calls, 1);
   assert.equal(result.request_count, 1);
   assert.equal(result.credits_remaining, 1990);
-  assert.equal(result.estimated_credits, 10);
+  assert.equal(result.estimated_credits, null);
   assert.deepEqual(JSON.parse(await readFile(result.local_cache_path, 'utf8')), result);
   assert.match(result.local_cache_path, /coresignal_[0-9a-f]{64}_.*\.json$/);
 });
@@ -57,7 +57,7 @@ test('PDL URL lookup keeps key in header and requests matching evidence at likel
   const cached = await readFile(result.local_cache_path, 'utf8');
   assert.equal(cached.includes('synthetic-secret'), false);
   assert.equal(cached.includes('must not persist'), false);
-  assert.equal(result.estimated_credits, 1);
+  assert.equal(result.estimated_credits, null);
   assert.equal(result.raw_payload.likelihood, 9);
 });
 
