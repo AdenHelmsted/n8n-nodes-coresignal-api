@@ -4,7 +4,7 @@ This internal evaluation CLI collects evidence for approved profiles and builds 
 
 ## Install and prepare the database
 
-Use a current Node.js 22 release or later. `npm install` installs the only direct runtime dependency, `@supabase/supabase-js`. Requests, files, normalization, hashing, argument parsing, and tests use native Node modules. Runtime source stays under the requested 750-line ceiling, excluding tests, SQL migrations, and documentation.
+Use a current Node.js 22 release or later. `npm install` installs the only direct runtime dependency, `@supabase/supabase-js`. Requests, files, normalization, hashing, argument parsing, and tests use native Node modules. The user removed the former 750-line ceiling so the parser, policy and CLI flow could be written clearly. The runtime still has one direct dependency; its manifest contract is tested in `test/runtime-contract.test.js`.
 
 Configure these preferred names in `.env`:
 
@@ -52,6 +52,93 @@ npm run people -- --url "https://www.linkedin.com/in/synthetic-person" --offline
 `--providers` defaults to `coresignal,pdl,brightdata`. Each configured provider receives one request per input; duplicate provider names are removed. Coresignal and Bright Data support URLs here. PDL supports a URL or first/last name with company or location. The CLI accepts `--domain`, but no current adapter sends it as a matching parameter.
 
 The normalizer accepts LinkedIn personal profile URLs, including scheme-less provider values. It produces `https://www.linkedin.com/in/<lowercase-slug>`, stripping query strings, hashes, and trailing slashes. Company URLs have a separate normalizer. Other hosts, credentials, extra path segments, and invalid profile paths are rejected.
+
+## Plain-text search and the decision receipt
+
+`--query "text"` and a positional query are primary CLI modes. A positional query cannot accompany another primary mode. The other modes remain `--url`, `--resolve`, `--replay`, `--weekly-refresh`, and `--finish-brightdata`.
+
+```bash
+# LIVE: one PDL resolution; placeholders must be approved before collecting.
+npm run people -- --query "First Last at Approved Company" --providers pdl
+
+# LIVE: PDL first, then selected URL providers only if the policy gate passes.
+npm run people -- --query "First Last in Tulsa" --providers pdl,coresignal,brightdata
+
+# LIVE: an embedded operator-supplied personal URL uses the normal URL path.
+npm run people -- "parse https://linkedin.com/in/approved-person" --providers coresignal
+
+# Fictional local fixtures only: zero HTTP and no hosted database.
+npm run people -- --query "Synthetic Person at Example Advisors" --offline
+```
+
+An embedded valid personal LinkedIn URL wins over name/context parsing. The existing strict URL validator normalizes it; lookalike hosts, credentials, malformed paths, company URLs and multiple distinct personal URLs reject before collection. Repeated copies of the same canonical URL are allowed. Query text is bounded to 2,048 characters.
+
+Without a URL, the first token is `first`, the second is `last`, and remaining tokens form one context. `at` explicitly selects company; `in` selects location. `from`, commas and a separating hyphen are accepted; without a direct hint the fixed US-state/metro classifier chooses a slot, otherwise company is the fallback. Every US state and postal code plus DC is recognized, including Indiana's uppercase `IN`; NYC is compared as New York. Postal abbreviations expand only as complete comma-separated location components or standalone codes; ordinary words such as “in” and “or” do not become state evidence. This is a finite dictionary, not geocoding. Unknown places can require explicit `in` or `--location`. Flags `--company` and/or `--location` override inferred context; when both are supplied both must corroborate. Use `--resolve --first ... --last ...` for multiword names. `--domain` remains parsed metadata and is not sent as a matching parameter.
+
+Name queries require PDL among selected providers; the CLI does not secretly add an unselected provider. PDL runs first even if listed later. A passing gate permits one request to each remaining selected, configured provider in selection order. Duplicate provider names are removed. Missing PDL credentials, errors, rejected identities and review-only outcomes never start URL-provider followups. No provider retry, search fallback or automatic Bright Data polling was added. `--local` still makes live provider calls.
+
+### Native policy v1
+
+This is a native deterministic contract inspired by the explicit policy/receipt patterns in the [researched Jev harnesses](jev-harness-research-2026-10-15.md). It does not call Jev, an LLM, OpenRouter or another decision service. Profile values still come only from mapped HTTP 200 provider responses.
+
+The receipt's `policy_version` is `people-search-v1`; `score_kind` is `heuristic_evidence_band`. The word `confidence` is the mission's field name. Neither it nor its interval is a statistically calibrated confidence level or the probability of the correct identity.
+
+| Signal | Exact policy |
+| --- | --- |
+| `name_score` | 1.00 for normalized first and last agreement; 0.80 for a single insertion, deletion, substitution or adjacent transposition in one name while the other agrees; otherwise 0.00. Missing names are not matches. Provider first/last fields are used, falling back only to tokens of its observed full name for comparison. |
+| `context_score` | 1.00 for the normalized company matching a job company or a complete phrase in the headline, or location matching a complete phrase in the returned location. 0.50 when the applicable returned fields are absent. 0.00 when populated but unmatched. Company and location do not substitute for each other. If both are requested, use their minimum score. |
+| `likelihood_score` | A finite numeric PDL likelihood in 0–10 divided by ten; missing/invalid values produce null. An explicitly invalid/out-of-range/below-six likelihood vetoes acceptance and canonical use. Missing likelihood widens uncertainty and cannot pass v1's waterfall gate. |
+
+The point score is rounded to two decimals:
+
+```text
+confidence = 0.65 * name_score
+           + 0.25 * context_score
+           + 0.10 * (likelihood_score if present, otherwise 0.50)
+
+radius = 0.02
+       + 0.08 if name_score is 0.80
+       + 0.20 if context_score is 0.50
+       + 0.25 if likelihood_score is null
+```
+
+Lower and upper endpoints are clamped to 0–1 and rounded outward to two decimals: lower down, upper up. A name mismatch, invalid/missing personal URL, non-200 response, deleted/invalid identity or explicitly invalid/low likelihood forces the lower endpoint to zero. That hard rule cannot be canceled by a high weighted score.
+
+| Lower endpoint | Action | Effect |
+| --- | --- | --- |
+| At least 0.75, with usable returned personal URL | `accept_and_waterfall` | Save the candidate and allow remaining selected providers. Identity remains unverified. |
+| 0.50 through below 0.75 | `review_only` | Save evidence and an unverified candidate; stop before URL-only providers. |
+| Below 0.50 | `abstain_reject` | Save raw evidence and receipt; prevent accepted canonical facts/new person creation. An existing linked person can still be flagged for review. |
+
+Exact names + matching context + likelihood 9 yield point 0.99 and interval [0.97,1.00]. A one-edit name + matching context + likelihood 9 yields 0.86 and [0.76,0.96]. Exact names + contradictory context + likelihood 9 yield 0.74 and [0.72,0.76], so provider likelihood alone cannot cause the waterfall. These are formula examples, not accuracy measurements.
+
+### Receipt, cache ancestry and replay
+
+`person_enrichments.provenance.decision_receipt` records:
+
+```json
+{
+  "policy_version": "people-search-v1",
+  "score_kind": "heuristic_evidence_band",
+  "query": "Synthetic Person at Example Advisors",
+  "classified_input": { "first": "Synthetic", "last": "Person", "company": "Example Advisors" },
+  "scores": { "name_score": 1, "context_score": 1, "likelihood_score": 0.9 },
+  "confidence": 0.99,
+  "confidence_interval": [0.97, 1],
+  "min_confidence_gate": 0.75,
+  "action": "accept_and_waterfall"
+}
+```
+
+For `--resolve`, a query label is assembled from supplied matching inputs; it is audit metadata, not a generated person attribute. The initial PDL raw cache retains the actual matching input/query before normalization. Its receipt is calculated during normalization and stored in database provenance, rather than rewriting that original raw file. Complete legacy PDL name/context caches also run through the gate on replay.
+
+Each automated URL followup's raw cache includes `search_origin` with the PDL `resolution_id` and its receipt. Normalization copies that ancestry into provenance and labels URL agreement as `search_match`, never `matched`. The inherited receipt describes the **parent PDL resolution**, not a new confidence judgment about the followup provider's facts. A different returned URL stays `mismatch`; absent/invalid identity remains blocked.
+
+Bright Data's pending 202 cache and subsequent explicit download retain the same search origin. Both raw-envelope and exported-snapshot-row replay preserve original inputs and ancestry. `--replay` never restarts the waterfall or makes provider/CDN calls. Original input files, already-applied snapshots, review notes/status/time and canonical replay markers are preserved. This is a versioned v1 formula, not a registry that automatically replays every historical policy implementation.
+
+All search-seeded candidates remain `unverified_search_match` with `needs_manual_review=true`; their URL-only followups cannot overwrite an existing verified person's facts. Review labels alone do not promote identity or resolve facts. After human confirmation, an explicit operator-supplied `--url` run can establish ordinary URL agreement. Such agreement still is not documentary/KYC verification.
+
+Search-origin snapshots also skip avatar downloads because the existing downloader requires `matched` identity. Provider picture references remain in evidence. Weekly refresh continues to select only verified people. No schema change is necessary: receipts and ancestry use existing JSONB provenance, and no hosted/provider calls were made while building this feature.
 
 ## Request and retry budgets
 
@@ -204,7 +291,7 @@ npm run people -- --url "https://www.linkedin.com/in/synthetic-person" --offline
 
 Tests cover baseline behavior, provider contracts/cache ordering, normalization, conflicts/concurrent jobs, stable hashes, diffs, replay, CAS, and avatar limits. Transport tests use the official Supabase client without a hosted project. Schema and full-pipeline integration tests use optional **test-only** PGlite and skip when unavailable. `test/schema.test.js` documents an isolated installation; `PGLITE_MODULE_PATH` can point to its module entry for both suites. PGlite is not an application dependency. A skipped database suite does not verify hosted deployment.
 
-The [historical SDK validation report](validation-2026-10-15.md) records that earlier block's 64 passing tests and 649 production JavaScript lines. Provider checks succeeded for the approved profile with matching returned URLs; Bright Data's inactive-account HTTP 400 remains cached beside its later success. Current verification reports **78 passing tests, zero failures/skips, and 653 production JavaScript lines** in the [new audit report](audit-and-review-views-2026-10-15.md). The full local database suites used external test-only PGlite; application dependencies and the lockfile were unchanged.
+The [historical SDK validation report](validation-2026-10-15.md) records that earlier block's 64 passing tests and 649 production JavaScript lines. Provider checks succeeded for the approved profile with matching returned URLs; Bright Data's inactive-account HTTP 400 remains cached beside its later success. The hosted-audit block recorded **78 passing tests, zero failures/skips, and 653 production JavaScript lines** in the [audit report](audit-and-review-views-2026-10-15.md). The later search feature records **105 passing tests, zero failures/skips, and 1,016 readable runtime lines** after the user removed the ceiling; see [its implementation account](plain-text-search-2026-10-15.md). The full local database suites used external test-only PGlite; application dependencies and the lockfile were unchanged.
 
 Earlier SDK checks recorded one hosted person, four linked snapshots, two change events, and idempotent replay. The combined record contained nine employment entries, two current roles, five education entries, and `needs_manual_review=true`. Its local/hosted hash agreed: `d34dcb1fadf713d7d4c319686a0ee6bbb69279def6b6e4c5f9573a5f2d682e02`. Fresh physical checks reproduced these counts and hash through SDK reads, and the SQL Editor verified the deployed review queue and permissions. No plugin SQL tool was used.
 

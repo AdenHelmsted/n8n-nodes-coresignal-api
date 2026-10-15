@@ -1,18 +1,11 @@
 import { createHash } from 'node:crypto';
+import { normalizeLinkedinUrl, normalizeCompanyLinkedinUrl, normStr } from './identifiers.js';
+import { decideSearch } from './search.js';
+
+export { normalizeLinkedinUrl, normalizeCompanyLinkedinUrl, normStr } from './identifiers.js';
+export { parseQuery, decideSearch } from './search.js';
 
 const text = value => typeof value === 'string' && value.trim() ? value.trim() : null;
-function linkedin(input, kind) {
-  if (!text(input)) throw new Error('LinkedIn URL is required.');
-  const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input.trim() : `https://${input.trim()}`);
-  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.port
-      || !/^(?:www\.|[a-z]{2,3}\.)?linkedin\.com$/i.test(url.hostname)) throw new Error('Invalid LinkedIn host.');
-  const match = new RegExp(`^/${kind}/([^/]+)/?$`).exec(url.pathname);
-  const slug = match && decodeURIComponent(match[1]).normalize('NFC').toLowerCase();
-  if (!slug || !/^[\p{L}\p{N}_-]+$/u.test(slug)) throw new Error(`Invalid LinkedIn ${kind} URL.`);
-  return `https://www.linkedin.com/${kind}/${encodeURIComponent(slug)}`;
-}
-export const normalizeLinkedinUrl = input => linkedin(input, 'in');
-export const normalizeCompanyLinkedinUrl = input => linkedin(input, 'company');
 const safeUrl = (value, company = false) => { try { return company ? normalizeCompanyLinkedinUrl(value) : normalizeLinkedinUrl(value); } catch { return null; } };
 const list = value => Array.isArray(value) ? value.filter(item => item && typeof item === 'object' && !Array.isArray(item)) : [];
 const months = 'jan feb mar apr may jun jul aug sep oct nov dec'.split(' ');
@@ -24,7 +17,6 @@ function date(value, year, month) {
   const named = /^([a-z]+)\s+(\d{4})$/i.exec(valueText || ''), index = named && months.indexOf(named[1].slice(0, 3).toLowerCase());
   return named && index >= 0 ? `${named[2]}-${String(index + 1).padStart(2, '0')}` : validYear;
 }
-export const normStr = value => (text(value) || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\b(inc|llc|corp)\b/g, '').replace(/\s+/g, ' ').trim();
 export const employmentKey = job => `${normStr(job.company_name)}|${normStr(job.title)}|${(job.start_date || '').slice(0, 4)}`;
 export function canonicalJsonStringify(value) {
   const sort = item => Array.isArray(item) ? item.map(sort) : item && typeof item === 'object'
@@ -63,11 +55,27 @@ export function normalizeSnapshot(provider, envelope) {
     : pdl ? { full_name: 'full_name', first_name: 'first_name', last_name: 'last_name', headline: p.headline ? 'headline' : 'derived:job_title+job_company_name', location: 'location_name', employment_history: 'experience', education: 'education' }
       : { full_name: 'name', first_name: 'first_name', last_name: 'last_name', headline: 'position', location: p.location ? 'location' : 'city', employment_history: 'experience', education: 'education', avatar_source_url: 'avatar' };
   fields.returned_linkedin_url = core ? (p.linkedin_url ? 'linkedin_url' : 'professional_network_url') : pdl ? 'linkedin_url' : 'url';
-  return { ...envelope, estimated_credits: null, billing_headers: envelope.billing_headers ?? null, provider_name: provider, provider_record_id: p.id == null ? null : String(p.id), requested_linkedin_url: requested, returned_linkedin_url: returned,
+  const snapshot = { ...envelope, estimated_credits: null, billing_headers: envelope.billing_headers ?? null, provider_name: provider, provider_record_id: p.id == null ? null : String(p.id), requested_linkedin_url: requested, returned_linkedin_url: returned,
     identity_status: lowConfidence || p.is_deleted === 1 || p.is_deleted === true || !returned ? 'missing_url' : !requested ? 'search_match' : requested === returned ? 'matched' : 'mismatch',
     full_name: text(core || pdl ? p.full_name : p.name), first_name: text(p.first_name), last_name: text(p.last_name),
     headline: text(core ? p.headline : pdl ? p.headline || (p.job_title && p.job_company_name ? `${p.job_title} at ${p.job_company_name}` : p.job_title) : p.position),
     location: text(core ? p.location_full : pdl ? p.location_name : p.location || p.city), avatar_source_url: text(core ? p.picture_url : pdl ? null : p.avatar),
     employment_history: jobs, education, source_updated_at: text(core ? p.updated_at : null),
     provenance: { endpoint: envelope.endpoint ?? null, fields }, raw_payload: raw };
+  if (pdl && !requested && envelope.input?.last && (envelope.input.company || envelope.input.location)) {
+    snapshot.provenance.decision_receipt = decideSearch(snapshot);
+    if (snapshot.provenance.decision_receipt.action === 'abstain_reject') {
+      snapshot.identity_status = 'missing_url';
+    }
+  }
+  if (envelope.search_origin) {
+    const receipt = envelope.search_origin.decision_receipt ?? null;
+    snapshot.provenance.search_origin = envelope.search_origin;
+    snapshot.provenance.decision_receipt = receipt;
+    // Matching an automatically discovered URL is still a search candidate, never operator-verified identity.
+    if (snapshot.identity_status === 'matched') {
+      snapshot.identity_status = receipt?.action === 'accept_and_waterfall' ? 'search_match' : 'missing_url';
+    }
+  }
+  return snapshot;
 }

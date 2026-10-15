@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 // Only public matching inputs are retained; credentials and request headers never are.
 export function matchingInput(input) {
-  return Object.fromEntries(['url', 'first', 'last', 'company', 'location', 'domain']
+  return Object.fromEntries(['url', 'first', 'last', 'company', 'location', 'domain', 'query']
     .filter(key => typeof input[key] === 'string' && input[key].trim())
     .map(key => [key, input[key].trim()]));
 }

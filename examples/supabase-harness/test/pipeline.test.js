@@ -72,7 +72,7 @@ test('cached provider response -> official Supabase SDK -> SQL canonical merge, 
   }
   const priorEvents = (await sql.query('select count(*)::int as count from public.person_changes')).rows[0].count;
   const changed = structuredClone(fixtures.coresignal);
-  changed.updated_at = '2026-10-15T23:00:00Z'; changed.headline = 'Updated professional headline';
+  changed.updated_at = new Date(Date.now() + 60_000).toISOString(); changed.headline = 'Updated professional headline';
   changed.experience[1].active_experience = 0; changed.experience[1].date_to = '2026-10';
   const updated = await coresignal({ url: 'https://www.linkedin.com/in/synthetic-person' }, {
     env: { CORESIGNAL_API_KEY: 'core-test' }, cacheDir: folder,

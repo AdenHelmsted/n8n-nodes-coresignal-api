@@ -1,8 +1,8 @@
-import { normalizeLinkedinUrl } from '../normalize.js';
+import { normalizeLinkedinUrl } from '../identifiers.js';
 import { matchingInput, requestCached } from './request.js';
 
 // https://docs.peopledatalabs.com/docs/input-parameters-person-enrichment-api
-export async function collect(input, { env = process.env, fetchImpl = fetch, cacheDir = '.cache/raw' } = {}) {
+export async function collect(input, { env = process.env, fetchImpl = fetch, cacheDir = '.cache/raw', metadata = {} } = {}) {
   const key = env.PDL_API_KEY || env.PEOPLEDATALABS_API_KEY;
   if (!key) return null;
   input = matchingInput(input);
@@ -21,5 +21,5 @@ export async function collect(input, { env = process.env, fetchImpl = fetch, cac
   const endpoint = `https://api.peopledatalabs.com/v5/person/enrich?${params}`;
   return requestCached('pdl', input, endpoint, {
     method: 'GET', headers: { 'X-Api-Key': key, Accept: 'application/json' }, signal: AbortSignal.timeout(30_000),
-  }, { fetchImpl, cacheDir, secret: key });
+  }, { fetchImpl, cacheDir, secret: key, metadata });
 }

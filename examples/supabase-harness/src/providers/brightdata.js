@@ -1,11 +1,11 @@
-import { normalizeLinkedinUrl } from '../normalize.js';
+import { normalizeLinkedinUrl } from '../identifiers.js';
 import { requestCached } from './request.js';
 
 const apiKey = env => env.BRIGHTDATA_API_KEY || env.BRIGHT_DATA_API_KEY || env.BRIGHT_DATA_TOKEN || env.BRIGHTDATA_API_TOKEN;
 
 // Official LinkedIn profiles dataset; synchronous API accepts {input:[{url}]}.
 // https://docs.brightdata.com/api-reference/scrapers/synchronous-requests
-export async function collect(input, { env = process.env, fetchImpl = fetch, cacheDir = '.cache/raw' } = {}) {
+export async function collect(input, { env = process.env, fetchImpl = fetch, cacheDir = '.cache/raw', metadata = {} } = {}) {
   const key = apiKey(env);
   if (!key || !input.url) return null;
   const url = normalizeLinkedinUrl(input.url);
@@ -14,11 +14,11 @@ export async function collect(input, { env = process.env, fetchImpl = fetch, cac
   return requestCached('brightdata', { url }, endpoint, {
     method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ input: [{ url }] }), signal: AbortSignal.timeout(70_000),
-  }, { fetchImpl, cacheDir, secret: key });
+  }, { fetchImpl, cacheDir, secret: key, metadata });
 }
 
 // Download an already-started job once; this does not trigger another collection.
-export async function finish(envelope, { env = process.env, fetchImpl = fetch, cacheDir = '.cache/raw' } = {}) {
+export async function finish(envelope, { env = process.env, fetchImpl = fetch, cacheDir = '.cache/raw', metadata = {} } = {}) {
   const key = apiKey(env);
   if (!key) return null;
   const snapshotId = envelope?.raw_payload?.snapshot_id;
@@ -29,7 +29,7 @@ export async function finish(envelope, { env = process.env, fetchImpl = fetch, c
   const endpoint = `https://api.brightdata.com/datasets/v3/snapshot/${encodeURIComponent(snapshotId)}?format=json`;
   return requestCached('brightdata', input, endpoint, {
     method: 'GET', headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }, signal: AbortSignal.timeout(30_000),
-  }, { fetchImpl, cacheDir, secret: key, metadata: {
+  }, { fetchImpl, cacheDir, secret: key, metadata: { ...metadata, ...(envelope.search_origin ? { search_origin: envelope.search_origin } : {}),
     parent_collection_id: envelope.parent_collection_id || envelope.id,
     parent_cache_path: envelope.parent_cache_path || envelope.local_cache_path,
     collection_request_count: 0, request_kind: 'snapshot_download',
