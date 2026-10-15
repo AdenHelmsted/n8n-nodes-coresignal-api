@@ -1,64 +1,119 @@
-# Simple people enrichment harness
+# Helmsted people enrichment
 
-One approved LinkedIn URL -> one Coresignal request -> a saved JSON run -> Supabase.
-Separate from the legislation project. One script, one database table, one runtime dependency: the official Supabase JavaScript client. Node.js 22 or later.
+A small Node.js CLI for comparing approved LinkedIn profiles across **Coresignal, People Data Labs (PDL), and Bright Data**, then keeping the evidence and a combined person record in Supabase. Bright Data replaces Apollo in the implementation. This repository stays separate from the legislation project.
+
+The runtime uses native Node.js 22 and one direct package dependency, the official `@supabase/supabase-js` client. The original Coresignal harness remains available. Implementation stays below the 750-line runtime budget; tests, SQL, and documentation are excluded.
 
 ## Setup
 
-1. Run `npm install`.
-2. Put these values in your local `.env` (see `.env.example`; keep any existing values):
+1. Use a current Node.js 22 release or later and run `npm install`.
+2. Add the keys you have to the local `.env`, following [`.env.example`](.env.example):
 
    ```dotenv
-   CORESIGNAL_API_KEY=your-key
+   CORESIGNAL_API_KEY=your-coresignal-key
+   PDL_API_KEY=your-pdl-key
+   BRIGHTDATA_API_KEY=your-bright-data-key
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_SECRET_KEY=your-server-secret
    ```
 
-   Legacy `SUPABASE_SERVICE_ROLE_KEY` is also accepted. Use a server secret, never a publishable/anon key. `.env` and saved responses are ignored by Git.
+   Keep server credentials local. The legacy `SUPABASE_SERVICE_ROLE_KEY` also works. Missing provider keys cause that provider to be skipped.
+3. In the intended Supabase project's SQL Editor, run [`schema.sql`](schema.sql) first, then all of [`sql/002_canonical_people_and_changes.sql`](sql/002_canonical_people_and_changes.sql). Migration 002 adds canonical people, the change ledger, snapshot links, the atomic import RPC, and the private avatar bucket while preserving existing snapshot columns and reviews. **The hosted migration still needs to be applied; providing the SQL does not deploy it.**
 
-3. Open your Supabase project's **SQL Editor**, paste all of [`schema.sql`](schema.sql), and run it once.
+## Start with one call
 
-## One profile
+Choose one approved profile and one provider explicitly:
+
+```bash
+npm run people -- --url "https://www.linkedin.com/in/approved-person" --providers coresignal
+```
+
+Substitute `pdl` or `brightdata` to compare another provider. To run all three sequentially:
+
+```bash
+npm run people -- --url "https://www.linkedin.com/in/approved-person" --providers coresignal,pdl,brightdata
+```
+
+Each selected, configured provider receives one collection request. There are no automatic provider retries or search fallbacks. Coresignal uses the Employee Multi-source core bundle. Defaults include all three providers, so use `--providers` for a controlled test.
+
+Add `--local` to make the live provider call and save its response without contacting Supabase or downloading a photo:
+
+```bash
+npm run people -- --url "https://www.linkedin.com/in/approved-person" --providers pdl --local
+```
+
+`--local` still makes a live provider request and can consume credits.
+
+## Save and replay the evidence
+
+Live responses are saved to `.cache/raw/` **before normalization or database writes**, including failures and pending Bright Data jobs. Keep the path printed by the CLI.
+
+After applying the migration, import a saved response without another enrichment or photo request:
+
+```bash
+npm run people -- --replay ".cache/raw/<saved-response>.json"
+```
+
+Replay can call Supabase. It makes zero provider or CDN requests. Replaying the same ID preserves the original snapshot and its manual review; an already-applied snapshot does not run the canonical merge again.
+
+If Bright Data returns HTTP 202 with a `snapshot_id`, download the result of that existing job once:
+
+```bash
+npm run people -- --finish-brightdata ".cache/raw/<pending-brightdata-response>.json"
+```
+
+This command makes one Bright Data download request. It does not start another collection or poll automatically. Its response gets a separate cache file linked to the original collection. See [operations](docs/OPERATIONS.md) before retrying a pending job.
+
+## Other commands
+
+Resolve a name with context through PDL; the result requires identity review:
+
+```bash
+npm run people -- --resolve --first "Chris" --last "Maresca" --company "Helmsted" --location "Oklahoma" --providers pdl
+```
+
+Exercise all three mappers and the merge with fictional fixtures, without HTTP or database writes:
+
+```bash
+npm run people -- --url "https://www.linkedin.com/in/synthetic-person" --offline
+npm test
+```
+
+Refresh a bounded set of verified URLs last checked more than seven days ago:
+
+```bash
+npm run people -- --weekly-refresh --limit 25 --providers coresignal
+```
+
+This runs once when invoked. **No schedule is installed.** The limit defaults to 25 and cannot exceed 100. An all-provider refresh can make up to three collection requests per selected person.
+
+## What Supabase contains
+
+| Resource | Purpose |
+| --- | --- |
+| `person_enrichments` | One snapshot per run, with raw response, identity result, usage, source mapping, retrieval time, and manual-review fields. |
+| `people` | One canonical record per normalized LinkedIn URL, with concurrent jobs, education, field provenance, conflicts, and a stable profile hash. |
+| `person_changes` | Changes to canonical profile facts, linked to the snapshot that triggered them. |
+| Private `person-avatars` bucket | Accepted profile photos stored internally; downloaded only for matched identities from approved LinkedIn CDN hosts. |
+
+URL agreement establishes identifier agreement, not factual accuracy. Conflicting and unverified claims remain available for review. A `verified` canonical identity is not a completed human accuracy check. Use the snapshot's `review_status`, `review_notes`, and `reviewed_at` in the Table Editor for manual checks. These fields record review decisions; changing them does not automatically undo a prior canonical merge.
+
+## Original harness and validation
+
+The original snapshot-only commands still work:
 
 ```bash
 npm run enrich -- "https://www.linkedin.com/in/approved-person/"
-```
-
-The CLI makes exactly one GET to Coresignal's Employee Multi-source endpoint with `bundle=core_employee_data`. The core bundle is documented at 10 credits per successful record. There is no search, automatic retry, or refresh scheduler. The API's remaining balance is logged separately from the estimated charge; the harness does not claim a measured credit delta.
-
-Test Coresignal without saving to Supabase:
-
-```bash
-npm run enrich -- "https://www.linkedin.com/in/approved-person/" --local
-```
-
-Each attempt is saved under `runs/<id>.json` before a database write. To save that response later, or retry a failed Supabase write:
-
-```bash
-npm run import -- runs/<id>.json
-```
-
-`import` uses the saved response and **does not call Coresignal**. Replaying the same ID leaves its existing database row and manual review unchanged. A new `enrich` invocation makes a new provider request and creates a separate row. Use the import command for the already-collected test response.
-
-## What is stored
-
-`person_enrichments` contains name, LinkedIn URL, headline, location, all employment entries, education, and the profile-picture URL reference. Each row also retains the requested identifier, provider, retrieval time, source update time, provider record ID, actual source-field mapping, raw response, HTTP status and usage metadata.
-
-Rows are snapshots rather than automatic overwrites: competing or stale claims stay visible. The response URL must agree with the requested URL to receive `matched_url`; a different or missing URL is saved for review and exits with a nonzero status. Both `linkedin_url` (observed live) and `professional_network_url` (documented variant) are supported. `matched_url` is identifier agreement, not verified factual accuracy. Dates and concurrent jobs remain intact.
-
-In Supabase's Table Editor, set `review_status` to `correct`, `wrong`, or `uncertain`, add `review_notes` describing missing/stale/conflicting fields, and set `reviewed_at`. Provider retention/storage permission still determines how long you can keep these rows and local JSON files.
-
-## Offline checks
-
-```bash
-npm test
+npm run import -- "runs/<id>.json"
 npm run demo
 ```
 
-The fictional demo makes no API requests and records zero usage. Tests cover one-call behavior, API errors, returned identity, multiple jobs, source provenance, and replay behavior through the official Supabase client. No live keys are needed for tests.
+Use `npm run people -- --replay "runs/<id>.json"` to apply a saved original run to the new canonical tables. It preserves that run ID. The legacy `import` command writes only the original snapshot table.
+
+Live provider checks have returned HTTP 200 with the approved URL from Coresignal, PDL, and Bright Data. Bright Data's earlier inactive-account HTTP 400 response remains cached. The [validation report](docs/validation-2026-10-15.md) records provider coverage, the combined record, **64 passing tests with no skips**, and **649 runtime lines**. These checks establish working requests and URL agreement; they do not establish enrichment accuracy across the proposed ten-profile sample or prove the hosted canonical migration is deployed.
+
+See [operations](docs/OPERATIONS.md) for request budgets, failure recovery, merge rules, review steps, and optional PostgreSQL schema tests. Provider storage, retention, and reuse permissions remain unresolved before client rollout. Tenant integration and a production application are not implemented here.
 
 ## GitHub reuse
 
-Forked [OpenProspector](https://github.com/AdenHelmsted/OpenProspector) and [Coresignal's official integration](https://github.com/AdenHelmsted/n8n-nodes-coresignal-api). Adapted only the vendor request/identifier helpers and the Coresignal slug/auth pattern. The harness runs independently of both larger applications. Exact upstream revisions, adapted files and MIT notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
-Provider references: [collect endpoint and bundles](https://docs.coresignal.com/employee-data/api/collect), [core fields](https://docs.coresignal.com/employee-data/bundles/core), [credit headers](https://docs.coresignal.com/api-introduction/credits).
+Forks: [OpenProspector](https://github.com/AdenHelmsted/OpenProspector) and [Coresignal's official integration](https://github.com/AdenHelmsted/n8n-nodes-coresignal-api). This CLI adapts their vendor/identifier helpers and Coresignal request pattern without importing the larger applications. Revisions and MIT notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

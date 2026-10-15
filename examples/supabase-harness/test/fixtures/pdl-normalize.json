@@ -1,0 +1,21 @@
+{
+  "status": 200,
+  "likelihood": 10,
+  "data": {
+    "id": "synthetic-pdl-1",
+    "linkedin_url": "linkedin.com/in/synthetic-person",
+    "full_name": "synthetic person",
+    "first_name": "synthetic",
+    "last_name": "person",
+    "job_title": "advisor",
+    "job_company_name": "example advisors",
+    "location_name": "chicago, illinois, united states",
+    "experience": [
+      { "title": { "name": "advisor" }, "company": { "name": "example advisors inc", "linkedin_url": "linkedin.com/company/example-advisors" }, "start_date": "2020", "end_date": null, "is_primary": true, "summary": "Long synthetic description from the secondary provider." },
+      { "title": { "name": "analyst" }, "company": { "name": "Prior Employer" }, "start_date": "2018", "end_date": "2022", "is_primary": true }
+    ],
+    "education": [
+      { "school": { "name": "Example University" }, "degrees": ["BA"], "majors": ["economics"], "start_date": "2001", "end_date": "2005" }
+    ]
+  }
+}

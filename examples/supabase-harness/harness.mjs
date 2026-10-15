@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { requestCached } from './src/providers/request.js';
 
 const API = 'https://api.coresignal.com/cdapi/v2/employee_multi_source/collect/';
 const SOURCES = {
@@ -28,18 +29,11 @@ export function linkedinUrl(input) {
 
 // Adapted from OpenProspector's vendorFetch. One request, with no retries/redirects.
 export async function vendorFetch(url, apiKey, fetchImpl = fetch) {
-  const response = await fetchImpl(url, {
+  const response = await requestCached('coresignal', { url: `https://www.linkedin.com/in/${new URL(url).pathname.split('/').at(-1)}/` }, url, {
     method: 'GET', headers: { Accept: 'application/json', apikey: apiKey },
     redirect: 'error', signal: AbortSignal.timeout(30_000),
-  });
-  const text = await response.text();
-  let body;
-  try { body = JSON.parse(text); } catch { body = text; }
-  const balance = response.headers.get('x-credits-remaining');
-  return {
-    status: response.status, body,
-    creditsRemaining: balance !== null && /^\d+$/.test(balance) ? Number(balance) : null,
-  };
+  }, { fetchImpl, secret: apiKey, estimatedCredits: 10 });
+  return { status: response.http_status, body: response.raw_payload, creditsRemaining: response.credits_remaining, local_cache_path: response.local_cache_path };
 }
 
 export function makeSnapshot(requestedUrl, result, { id = randomUUID(), retrievedAt = new Date().toISOString() } = {}) {
@@ -67,7 +61,7 @@ export function makeSnapshot(requestedUrl, result, { id = randomUUID(), retrieve
     http_status: result.status, request_count: 1,
     estimated_credits: result.status === 200 ? 10 : null,
     credits_remaining: result.creditsRemaining ?? null,
-    provenance: { endpoint: result.endpoint ?? null, bundle: 'core_employee_data', fields: sources },
+    provenance: { endpoint: result.endpoint ?? null, bundle: 'core_employee_data', fields: sources, cache_path: result.local_cache_path ?? null },
     raw_response: raw ?? null,
   };
 }
@@ -77,9 +71,7 @@ export async function collectPerson(url, apiKey, fetchImpl = fetch) {
   const canonical = linkedinUrl(url);
   // Request construction adapted from Coresignal's official get_by_slug node.
   const endpoint = `${API}${canonical.split('/')[4]}?bundle=core_employee_data`;
-  let result;
-  try { result = await vendorFetch(endpoint, apiKey, fetchImpl); }
-  catch { result = { status: null, body: { error: 'Network error or timeout; no automatic retry.' } }; }
+  const result = await vendorFetch(endpoint, apiKey, fetchImpl);
   return makeSnapshot(canonical, { ...result, endpoint });
 }
 
@@ -139,7 +131,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     if (!snapshot.provenance.synthetic) {
       snapshot = makeSnapshot(snapshot.requested_linkedin_url, {
         status: snapshot.http_status, body: snapshot.raw_response,
-        creditsRemaining: snapshot.credits_remaining, endpoint: snapshot.provenance.endpoint,
+        creditsRemaining: snapshot.credits_remaining, endpoint: snapshot.provenance.endpoint, local_cache_path: snapshot.provenance.cache_path,
       }, { id: snapshot.id, retrievedAt: snapshot.retrieved_at });
       await writeFile(input, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
     }

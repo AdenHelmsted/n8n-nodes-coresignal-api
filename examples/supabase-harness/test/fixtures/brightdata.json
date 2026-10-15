@@ -1,0 +1,25 @@
+[
+  {
+    "id": "synthetic-person",
+    "linkedin_id": "synthetic-person",
+    "name": "Synthetic Person",
+    "first_name": "Synthetic",
+    "last_name": "Person",
+    "city": "Chicago, Illinois, United States",
+    "location": "Chicago, Illinois, United States",
+    "country_code": "US",
+    "position": "Advisor and Board Member",
+    "current_company_name": "Example Advisors",
+    "url": "https://www.linkedin.com/in/synthetic-person",
+    "input_url": "https://www.linkedin.com/in/synthetic-person",
+    "avatar": "https://example.com/synthetic-avatar.jpg",
+    "timestamp": "2026-10-15T00:00:00.000Z",
+    "experience": [
+      { "company": "Example Advisors", "title": "Advisor", "description_html": "<p>Synthetic advisory role.</p>", "duration": "2020 - Present", "subtitle": "Example Advisors" },
+      { "company": "Example Foundation", "title": "Board Member", "description_html": null, "duration": "2024 - Present", "subtitle": "Example Foundation" }
+    ],
+    "education": [
+      { "title": "Example University", "url": "https://www.linkedin.com/school/example-university", "start_year": "2001", "end_year": "2005", "description": "BA Economics", "description_html": null, "institute_logo_url": null }
+    ]
+  }
+]

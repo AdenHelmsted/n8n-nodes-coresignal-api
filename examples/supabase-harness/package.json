@@ -8,6 +8,7 @@
     "enrich": "node --env-file-if-exists=.env harness.mjs enrich",
     "import": "node --env-file-if-exists=.env harness.mjs import",
     "demo": "node harness.mjs demo",
+    "people": "node --env-file-if-exists=.env src/index.js",
     "test": "node --test"
   },
   "dependencies": { "@supabase/supabase-js": "^2.0.0" }

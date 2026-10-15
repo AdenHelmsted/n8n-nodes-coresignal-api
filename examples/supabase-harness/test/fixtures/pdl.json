@@ -1,0 +1,35 @@
+{
+  "status": 200,
+  "likelihood": 9,
+  "matched": ["profile"],
+  "data": {
+    "id": "synthetic-pdl-person",
+    "linkedin_url": "linkedin.com/in/synthetic-person",
+    "full_name": "Synthetic Person",
+    "first_name": "Synthetic",
+    "last_name": "Person",
+    "headline": "Advisor and Board Member",
+    "job_title": "advisor",
+    "job_company_name": "Example Advisors",
+    "location_name": "Chicago, Illinois, United States",
+    "experience": [
+      {
+        "company": { "name": "Example Advisors LLC", "linkedin_url": "linkedin.com/company/example-advisors" },
+        "title": { "name": "Advisor" },
+        "start_date": "2020-01",
+        "end_date": null,
+        "is_primary": true,
+        "location_names": ["Chicago, Illinois, United States"],
+        "summary": "Synthetic description for an approved offline demonstration."
+      },
+      {
+        "company": { "name": "Example Foundation", "linkedin_url": "linkedin.com/company/example-foundation" },
+        "title": { "name": "Board Member" },
+        "start_date": "2024",
+        "end_date": null,
+        "is_primary": false
+      }
+    ],
+    "education": [{ "school": { "name": "Example University" }, "degrees": ["BA"], "majors": ["Economics"], "start_date": "2001", "end_date": "2005" }]
+  }
+}
