@@ -1,21 +1,38 @@
 # Review views and billing-evidence audit
 
-This block prepares read-only review views and honest response-header capture. It makes **zero live Coresignal, PDL, Bright Data, or CDN requests**. The user requires hosted checks and view application through the Supabase plugin.
+This report separates the original local implementation checks from the hosted physical checks completed on October 15, 2026. The physical checks made **zero live Coresignal, PDL, Bright Data, or CDN requests**, and production JavaScript remained unchanged.
 
-## Hosted verification status
+## Hosted verification completed
 
-The user reports that the Supabase plugin should be present. The rechecked tool catalog still reports it uninstalled in this environment and exposes no Supabase SQL tools. This availability discrepancy remains unresolved. Consequently, this block has not freshly queried hosted people/snapshots/changes/storage, applied the review-view migration to the hosted project, or queried those views there. No current hosted result is inferred from local tests or a project SDK credential; no REST audit was substituted for the requested plugin audit.
+The Supabase plugin is now reported installed, but this session still exposes no Supabase SQL tool. After the user signed in with the project admin account and authorized continuation, the existing review migration was applied through the **authenticated Supabase dashboard SQL Editor**, not through a plugin SQL tool. SDK/Data API reads independently verified the resulting rows. This completes the requested hosted work through the dashboard; it does not claim plugin execution.
 
-The [earlier validation report](validation-2026-10-15.md) records historical SDK observations: one person, four linked snapshots, two changes, matching local/hosted hash, idempotent replay, and a private photo check. It does not fulfill the current plugin-only audit requirement. Counts, current photo existence, and hosted view outputs remain to be re-observed through the plugin.
+Project: **Helmsted Market Data**, ref `ikyuxvexotyntivlsljt`. The SQL Editor reported database `postgres`, executing role `postgres`, and PostgreSQL **17.6**. The actual table columns were inspected before applying [`../migrations/20261015174745_people_review_views.sql`](../migrations/20261015174745_people_review_views.sql). Its result was **Success. No rows returned**. The complete read-only [`../sql/review_audit_queries.sql`](../sql/review_audit_queries.sql) then executed successfully, and focused SQL queries verified the queue and permissions. Fresh SDK reads recorded:
 
-After connection, the remaining hosted work is:
+| Hosted observation | Actual result |
+| --- | --- |
+| Canonical people | 1 |
+| Linked snapshots | 4: Coresignal 200, PDL 200, Bright Data 200, earlier Bright Data 400 |
+| Snapshot human reviews | All pending |
+| Change events | 2, linked to the PDL and successful Bright Data imports |
+| Canonical employment entries | 9, including 2 current roles |
+| Canonical education entries | 5 |
+| Identity / manual review | `verified` URL identity / `needs_manual_review=true` |
+| Profile hash | `d34dcb1fadf713d7d4c319686a0ee6bbb69279def6b6e4c5f9573a5f2d682e02` |
+| Private avatar catalog | `person-avatars` is private; matching object metadata reports 8,235 bytes, `image/jpeg` |
 
-1. Query the three tables and check canonical counts, identity/review flags, provenance, snapshot links, and the two change events.
-2. Inspect the existing private `person-avatars` bucket/object without a new image download.
-3. Apply [`../migrations/20261015174745_people_review_views.sql`](../migrations/20261015174745_people_review_views.sql) after the existing base schema/migration 002.
-4. Query both views for the approved person and record exact observed output counts/values, access restrictions, and the mechanism used.
+The original run `bc2884c8-37af-4e97-8998-8c7cb1bcfa8c` was replayed twice through `npm run people -- --replay`. Both returned `replayed:true`; person/snapshot/change counts and the profile hash stayed unchanged. No provider or CDN was contacted. Snapshot reviews remained pending.
 
-The read-only [audit query file](../sql/review_audit_queries.sql) prepares those queries for execution after the migration. It is SQL source, not hosted evidence; object-listing metadata does not verify current photo bytes.
+### Actual hosted view results
+
+`v_review_queue` returned one row for Chris Maresca: pending review, 9 employment entries, 5 education entries, **20 conflicting fields**, and manual review required. `v_person_claim_disagreements` returned **20 rows: 5 scalar, 13 employment, and 2 education**. Eighteen selected claims were from Coresignal and two from PDL. These are recorded disagreements, not twenty proven errors; case differences, historical claims, and genuinely different facts still require review.
+
+Both views report `security_invoker=true` and `is_updatable=NO`. A separate compact permissions query confirmed, for each view: `anon SELECT=false`, `authenticated SELECT=false`, `service_role SELECT=true`, and `service_role INSERT/UPDATE/DELETE=false`. The migration adds no base-table writes and does not modify legislation resources. Both datasets currently share the project's `public` schema but use separate tables, views, and codebases; this is table separation, not a separate database/schema security boundary.
+
+The dashboard Advisor Center was inspected with all filters cleared. It lists RLS-enabled/no-policy notices for the internal people tables and legislation tables, unused indexes, and an Auth connection-management recommendation. The people tables deliberately deny ordinary client access and use server credentials, so no permissive client policy was added. No advisor item naming either new view was shown. The existing Auth/legislation findings were not changed; this inspection is not a blanket security certification.
+
+Private evidence is retained under ignored `.cache/audit/`, including `review-views-2026-10-15T20-36-33.212Z.json` and `hosted-review-queue.jpg`. The fresh storage check verifies catalog existence/metadata only, not current image bytes. The earlier [SDK validation](validation-2026-10-15.md) documents the separate historical signed-byte/SHA check. No fresh photo request was needed for this block.
+
+All current observations still cover **one approved person**. Human accuracy for the proposed ten-profile sample is unmeasured. Follow [the physical-testing guide](PHYSICAL_TEST.md) to approve and evaluate the remaining profiles before adding merge features or scheduling refreshes.
 
 ## Local cache metadata: observed facts
 
@@ -41,7 +58,7 @@ The migration adds no JavaScript or base-table mutations:
 
 Both are read-only, use `security_invoker=true`, and grant only `SELECT` to `service_role`. Queue notes/statuses aggregate actual linked snapshot reviews. The summary prioritizes wrong, uncertain, pending, then correct; it does not certify identity or accuracy. Canonical entry counts are not counts of independently confirmed jobs or schools. Disagreement rows show recorded competing claims, not inferred provider values or every identical supporting claim.
 
-The migration is prepared and verified locally. Hosted application and output remain pending the plugin steps above.
+The migration is verified locally and now applied to the hosted project through the authenticated SQL Editor. Actual output and permissions are recorded above.
 
 ## Header capture contract
 
@@ -70,4 +87,4 @@ Credit-spent headers are provider-reported units. Remaining balances, rate limit
 
 The full suite used external, test-only PGlite for SQL schema/view checks and the official Supabase SDK's local database integration. No application dependency or lockfile changes were required. Tests verify exact header strings (including `0001`) survive cache/provenance/database transport, absent headers remain null, historical caches stay unchanged, and both views query locally with the intended read-only permissions and review semantics. Existing merge, concurrent-role, date-precision, and replay scenarios remain covered.
 
-Legacy replay forwards captured header metadata when present; normalization makes absent old headers and estimate output null without editing source caches. Offline fixture retrieval time is generated at execution rather than hardcoded. No provider, CDN, or hosted REST checks ran in this block. These local results do not establish hosted view deployment or current hosted data/storage state.
+Legacy replay forwards captured header metadata when present; normalization makes absent old headers and estimate output null without editing source caches. Offline fixture retrieval time is generated at execution rather than hardcoded. The original local implementation block made no provider, CDN, or hosted REST checks. The later physical-testing block recorded above added authenticated dashboard SQL execution and fresh SDK/Data API checks, with no provider or CDN calls. The full 78-test suite and fictional three-provider offline run were repeated during that physical-testing block.

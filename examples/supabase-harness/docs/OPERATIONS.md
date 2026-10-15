@@ -22,11 +22,11 @@ In Supabase's SQL Editor, apply the complete files in this order:
 
 1. [`../schema.sql`](../schema.sql): existing `person_enrichments` table and permissions.
 2. [`../sql/002_canonical_people_and_changes.sql`](../sql/002_canonical_people_and_changes.sql): canonical tables, additive snapshot columns, indexes, private avatar bucket, and `apply_person_enrichment` RPC.
-3. Optional: [`../migrations/20261015174745_people_review_views.sql`](../migrations/20261015174745_people_review_views.sql), adding service-role-only, read-only review views after migration 002. Hosted application through the plugin is pending; see [audit status](audit-and-review-views-2026-10-15.md).
+3. Optional: [`../migrations/20261015174745_people_review_views.sql`](../migrations/20261015174745_people_review_views.sql), adding service-role-only, read-only review views after migration 002. Applied and verified in the current pilot through the authenticated dashboard SQL Editor, with SDK readback; see [hosted audit](audit-and-review-views-2026-10-15.md).
 
 Migration 002 expects UUID snapshot IDs and preserves baseline columns and manual reviews. It is repeatable and sets the avatar bucket private even if that bucket already exists. Snapshot import uses the official SDK; the RPC atomically applies the canonical record, any required change event, and the snapshot link.
 
-Earlier SDK validation recorded migration 002 applied and hosted preflight passing. The current mission requires fresh audit/application/query checks through the Supabase plugin; those remain pending authenticated plugin SQL tools. Fresh projects still need the base SQL files above. Before collecting, CLI preflight checks both new tables, additive snapshot columns, and RPC availability/permissions using a deliberately missing snapshot UUID. That probe must return `23503` and writes no data. Replay an existing response to check a newly configured database without another provider call. A publishable/anonymous key cannot operate these internal tables. Anonymous and authenticated roles have no table access or RPC execution permission under these migrations.
+Fresh hosted physical checks confirmed migration 002/preflight and deployed the review views. The plugin is reported installed but exposes no SQL tools in this session; authenticated dashboard SQL execution and SDK readback were used instead, with explicit user continuation after sign-in. Fresh projects still need the base SQL files above. Before collecting, CLI preflight checks both new tables, additive snapshot columns, and RPC availability/permissions using a deliberately missing snapshot UUID. That probe must return `23503` and writes no data. Replay an existing response to check a newly configured database without another provider call. A publishable/anonymous key cannot operate these internal tables. Anonymous and authenticated roles have no table access or RPC execution permission under these migrations.
 
 ## Choose the request scope
 
@@ -154,7 +154,7 @@ select * from public.v_review_queue order by updated_at desc;
 select * from public.v_person_claim_disagreements order by person_id, claim_type;
 ```
 
-For the current mission, execute/apply/verify these through the connected Supabase plugin. SQL Editor application is an alternative for fresh manual setup, but it is not a substitute for claiming plugin verification. Current hosted view application/query results remain unobserved pending connection.
+Both views are deployed in the current pilot. The authenticated SQL Editor returned one queue row and twenty recorded disagreement fields; SDK readback agreed. The [audit report](audit-and-review-views-2026-10-15.md) records permissions and evidence. This was dashboard SQL execution, not plugin SQL execution. Use the [physical-testing guide](PHYSICAL_TEST.md) for repeatable operator checks.
 
 ## Canonical selection, provenance, and changes
 
@@ -204,11 +204,11 @@ npm run people -- --url "https://www.linkedin.com/in/synthetic-person" --offline
 
 Tests cover baseline behavior, provider contracts/cache ordering, normalization, conflicts/concurrent jobs, stable hashes, diffs, replay, CAS, and avatar limits. Transport tests use the official Supabase client without a hosted project. Schema and full-pipeline integration tests use optional **test-only** PGlite and skip when unavailable. `test/schema.test.js` documents an isolated installation; `PGLITE_MODULE_PATH` can point to its module entry for both suites. PGlite is not an application dependency. A skipped database suite does not verify hosted deployment.
 
-The [historical SDK validation report](validation-2026-10-15.md) records that earlier block's 64 passing tests and 649 production JavaScript lines. Provider checks succeeded for the approved profile with matching returned URLs; Bright Data's inactive-account HTTP 400 remains cached beside its later success. Current verification reports **77 passing tests, zero failures/skips, and 653 production JavaScript lines** in the [new audit report](audit-and-review-views-2026-10-15.md). The full local database suites used external test-only PGlite; application dependencies and the lockfile were unchanged.
+The [historical SDK validation report](validation-2026-10-15.md) records that earlier block's 64 passing tests and 649 production JavaScript lines. Provider checks succeeded for the approved profile with matching returned URLs; Bright Data's inactive-account HTTP 400 remains cached beside its later success. Current verification reports **78 passing tests, zero failures/skips, and 653 production JavaScript lines** in the [new audit report](audit-and-review-views-2026-10-15.md). The full local database suites used external test-only PGlite; application dependencies and the lockfile were unchanged.
 
-Earlier SDK checks recorded one hosted person, four linked snapshots, two change events, and idempotent replay. The combined record contained nine employment entries, two current roles, five education entries, and `needs_manual_review=true`. Its local/hosted hash agreed: `d34dcb1fadf713d7d4c319686a0ee6bbb69279def6b6e4c5f9573a5f2d682e02`. These are historical observations, not a fresh plugin query.
+Earlier SDK checks recorded one hosted person, four linked snapshots, two change events, and idempotent replay. The combined record contained nine employment entries, two current roles, five education entries, and `needs_manual_review=true`. Its local/hosted hash agreed: `d34dcb1fadf713d7d4c319686a0ee6bbb69279def6b6e4c5f9573a5f2d682e02`. Fresh physical checks reproduced these counts and hash through SDK reads, and the SQL Editor verified the deployed review queue and permissions. No plugin SQL tool was used.
 
-That earlier block also recorded an 8,235-byte JPEG in the private avatar bucket, signed-read HTTP 200 with matching SHA, and anonymous-public-read HTTP 400. It used a separate CDN download and did not change the profile hash. The current block makes no provider/CDN calls; storage state still needs the requested fresh plugin inspection. Manual sample accuracy remains unmeasured.
+That earlier block also recorded an 8,235-byte JPEG in the private avatar bucket, signed-read HTTP 200 with matching SHA, and anonymous-public-read HTTP 400. It used a separate CDN download and did not change the profile hash. The fresh physical block made no provider/CDN calls; it confirmed the private bucket and matching object catalog metadata without downloading bytes again. Manual sample accuracy remains unmeasured.
 
 ## Before client rollout
 

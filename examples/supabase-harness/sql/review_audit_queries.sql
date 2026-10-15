@@ -1,4 +1,5 @@
--- Prepared queries for the required Supabase-plugin audit; not observed output.
+-- Repeatable read-only hosted audit queries; source SQL is not observed output.
+-- Executed through the authenticated SQL Editor on 2026-10-15; see the audit report.
 -- Run after the review-view migration. Inspect the returned schema before relying
 -- on any result. These queries do not collect provider data or download photos.
 begin read only;
